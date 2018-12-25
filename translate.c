@@ -27,10 +27,6 @@ struct Tr_level_ {
 	Tr_level parent;
 };
 
-struct Tr_expList_{
-	Tr_exp head;
-	Tr_expList tail;
-};
 
 //The global fragment list
 F_fragList glbl = NULL;
@@ -85,7 +81,7 @@ Tr_accessList Tr_AccessList(Tr_access head, Tr_accessList tail){
 Tr_level Tr_outermost(void){
     //very important to have this U_boolList here! otherwise nothing can be added to the outmost frame.
     U_boolList formals =  U_BoolList(1, NULL);
-	return Tr_newLevel(NULL, Temp_namedlabel("outmost"), formals);
+	return Tr_newLevel(NULL, Temp_namedlabel("tigermain"), formals);
 }
 
 Tr_level Tr_newLevel(Tr_level parent, Temp_label name, U_boolList formals){
@@ -197,8 +193,8 @@ static struct Cx unCx(Tr_exp e){
 		case Tr_cx: return e->u.cx;
 		case Tr_ex: {
 			Temp_label t = Temp_newlabel();
-			Temp_label f = Temp_newlabel();
-			T_stm stm = T_Cjump(T_ne, e->u.ex, T_Const(0), t, f);
+			Temp_label f = t;
+			T_stm stm = T_Seq(T_Cjump(T_ne, e->u.ex, T_Const(0), t, f), T_Label(t));
 			/*
 			if(e->u.ex->kind == T_CONST && (e->u.ex->u.CONST == 0 || e->u.ex->u.CONST==1) ){
 				stm = T_Exp(T_Const(e->u.ex->u.CONST));
@@ -248,6 +244,7 @@ Tr_exp Tr_simpleVar(Tr_access access, Tr_level level){
 	//F_exp(acc,fp) finds this variable on stack.
 	return Tr_Ex(F_exp(acc, fp));
 }
+
 
 //Access a field variable. Don't forget to time F_wordSize
 Tr_exp Tr_fieldVar(Tr_exp base, int offset){
@@ -312,14 +309,14 @@ Tr_exp Tr_stringExp(string s){
     *new_s = length;
     for(int i = 0; i < strlen(s); i++) new_s[i+4] = s[i];
     new_s[strlen(s)+1] = '\0';
-	Temp_label lab = Temp_namedlabel(s);
+	Temp_label lab = Temp_newlabel(); //use newlabel is better. The string can be empty!
 	glbl = F_FragList(F_StringFrag(lab, new_s), glbl);
 	return Tr_Ex(T_Name(lab));
 }
 
 //creation of a record TBD: initialization? return a ptr?
 Tr_exp Tr_recordExp(int cnt){
-	return Tr_Ex(F_externalCall(String("initRecord"), T_ExpList(T_Const(cnt), NULL)));
+	return Tr_Ex(F_externalCall(String("allocRecord"), T_ExpList(T_Const(cnt), NULL)));
 	//return Tr_Ex(T_Call(T_Name(Temp_namedlabel("initRecord")), T_ExpList(T_Const(cnt), NULL)));
 }
 
@@ -356,7 +353,6 @@ Tr_exp Tr_forExp(Tr_exp id_exp, Tr_exp lo, Tr_exp hi, Tr_exp body_exp, Temp_labe
 
 	Temp_label test = Temp_newlabel();
 	Temp_label body = Temp_newlabel();
-	Temp_label plusplus = Temp_newlabel();
 
 	//doPatch(cond_cx.trues, body);
 	//doPatch(cond_cx.falses, bTarget);
@@ -364,14 +360,13 @@ Tr_exp Tr_forExp(Tr_exp id_exp, Tr_exp lo, Tr_exp hi, Tr_exp body_exp, Temp_labe
 			T_Seq(T_Move(T_Temp(r_i), unEx(lo)),
 			T_Seq(T_Move(T_Temp(r_lim), unEx(hi)),
 			T_Seq(T_Label(test),			
-			T_Seq(T_Cjump(T_gt, T_Temp(r_i), T_Temp(r_lim), bTarget, plusplus),
-			T_Seq(T_Label(plusplus),
-			T_Seq(T_Move(T_Temp(r_i), T_Binop(T_plus, T_Temp(r_i), T_Const(1))),
+			T_Seq(T_Cjump(T_gt, T_Temp(r_i), T_Temp(r_lim), bTarget, body),
 			T_Seq(T_Label(body),
 			T_Seq(unNx(body_exp),
+			T_Seq(T_Move(T_Temp(r_i), T_Binop(T_plus, T_Temp(r_i), T_Const(1))),
 			T_Seq(T_Jump(T_Name(test), Temp_LabelList(test, NULL)),
 			T_Label(bTarget)
-			))))))))));
+			)))))))));
 }
 
 Tr_exp Tr_breakExp(Temp_label bTarget){
@@ -379,16 +374,23 @@ Tr_exp Tr_breakExp(Temp_label bTarget){
 }
 
 //call a function. fun_level: declared level, cur_level: call level. static link as first param.
-Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level){
+//update on 20181221: Previous implementation is wrong. The lis should contain all actual positions, consisting of 
+//T_exp terms of translated arguments.
+Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level, Tr_expList args){
 	T_expList rev_lis = NULL;
     //printf("%d %d\n", cur_level, fun_level);
 	T_exp sl = Tr_staticLink(cur_level, fun_level)->u.ex;
 	Temp_temp fp = F_FP();
+    /*
 	Tr_accessList accs = Tr_formals(cur_level);
 	for(Tr_accessList acc = accs; acc; acc = acc->tail){
 		F_access facc = acc->head->access;
 		rev_lis = T_ExpList(F_exp(facc, T_Temp(fp)), rev_lis);
 	}
+    */
+    for(Tr_expList p = args; p; p = p->tail){
+        rev_lis = T_ExpList(unEx(p->head), rev_lis);
+    }
 	T_expList lis = NULL;
 	for(T_expList expl = rev_lis; expl; expl = expl->tail){
 		lis = T_ExpList(expl->head, lis);

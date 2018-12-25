@@ -8,10 +8,11 @@
 #include "util.h"
 #include "assem.h"
 //#include "temp.h"
-static const int F_wordSize = 8;
+static const int F_wordSize = 8; //semant.c A_functionDec uses it
 static Temp_temp FP = NULL, RV = NULL, RDX = NULL, RDI = NULL, RSI = NULL, RCX = NULL, R8 = NULL,
 	R9 = NULL, R10 = NULL, R11 = NULL, R12 = NULL, R13 = NULL, R14 = NULL, R15 = NULL, SP = NULL,
 	RBX = NULL;
+int F_numRegisters();
 Temp_temp F_FP(void);
 Temp_temp F_RV(void);
 Temp_temp F_RDX(void);
@@ -28,9 +29,12 @@ Temp_temp F_R14(void);
 Temp_temp F_R15(void);
 Temp_temp F_SP(void);
 Temp_temp F_RBX(void);
-
+Temp_tempList F_MachineRegisters(void);
+Temp_tempList F_calleeSavedRegisters(void);
+Temp_tempList F_machineRegisters, F_calleeSaved;
 Temp_map F_tempMap;
 void F_initMap();
+Temp_map F_getTempMap();
 
 struct F_access_ {
 	enum {inFrame, inReg} kind;
@@ -48,7 +52,7 @@ struct F_frame_{
 	U_boolList escapes;
 	int size;
 	//how to access all params.
-	F_accessList accessList;
+	F_accessList accessList, accessList_l;
 };
 
 
@@ -93,5 +97,5 @@ T_stm F_procEntryExit1(F_frame frame, T_stm stm);
 //produce the live variables after procedure
 AS_instrList F_procEntryExit2(AS_instrList body);
 //prologue and epilogue
-AS_instrList F_procEntryExit3(F_frame frame, AS_instrList body);
+AS_proc F_procEntryExit3(F_frame frame, AS_instrList body);
 #endif

@@ -22,7 +22,9 @@
 #include "parse.h"
 #include "codegen.h"
 #include "regalloc.h"
-
+#include "flowgraph.h"
+//should be deleted
+#include "liveness.h"
 extern bool anyErrors;
 
 /*Lab6: complete the function doProc
@@ -64,18 +66,30 @@ static void doProc(FILE *out, F_frame frame, T_stm body)
  //printStmList(stdout, stmList);
  //printf("-------====trace=====-----\n");
  iList  = F_codegen(frame, stmList); /* 9 */
-
+ proc = F_procEntryExit3(frame, iList);
  AS_printInstrList(stdout, iList, Temp_layerMap(F_tempMap, Temp_name()));
- printf("----======before RA=======-----\n");
- //12.4 NOT IMPLEMENTED (after "before RA")
  
- //G_graph fg = FG_AssemFlowGraph(iList);  /* 10.1 */
+  /*
+ G_graph fg = FG_AssemFlowGraph(iList);  // 10.1
+ struct Live_graph lg = Live_liveness(fg);
+ Live_print(lg);
+ */
+ printf("----======before RA=======-----\n");
  struct RA_result ra = RA_regAlloc(frame, iList);  /* 11 */
 
- fprintf(out, "BEGIN function\n");
- AS_printInstrList (out, proc->body,
-                       Temp_layerMap(F_tempMap, ra.coloring));
- fprintf(out, "END function\n");
+ printf("----======end RA=======-----\n");
+ 
+ //12.19 NOT IMPLEMENTED (after "end RA")
+ string procName = F_name(frame);
+ fprintf(out, ".text\n");
+ fprintf(out, ".globl %s\n", procName);
+ fprintf(out, ".type %s, @function\n", procName);
+ fprintf(out, "%s:\n", procName);
+ proc =  F_procEntryExit3(frame, iList);
+ AS_printInstrList(out, proc->prolog, Temp_layerMap(ra.coloring, Temp_name()));
+ AS_printInstrList(out, iList, Temp_layerMap(ra.coloring, Temp_name()));
+ AS_printInstrList(out, proc->epilog, Temp_layerMap(ra.coloring, Temp_name()));
+ //fprintf(out, "END %s\n\n", F_name(frame));
 
  //Part of TA's implementation. Just for reference.
  /*
@@ -108,7 +122,7 @@ void doStr(FILE *out, Temp_label label, string str) {
 	length = length + 4;
 	//it may contains zeros in the middle of string. To keep this work, we need to print all the charactors instead of using fprintf(str)
 	fprintf(out, ".string \"");
-	int i = 0;
+	int i = 4;
 	for (; i < length; i++) {
 		fprintf(out, "%c", str[i]);
 	}

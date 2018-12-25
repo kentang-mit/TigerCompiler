@@ -190,11 +190,13 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a, Tr_level l, Temp_labe
 			Ty_tyList formal;
 			
 			//for(arg = args, formal = formals; arg && formal; arg = arg->tail, formal = formal->tail);
-            
+            //The arguments will be found in venv. (Update: 20181221)
+            Tr_expList call_args = NULL;
 			for(arg = args, formal = formals; arg && formal; arg = arg->tail, formal = formal->tail){
 				struct expty cur_arg = transExp(venv, tenv, arg->head, l, label);
+                call_args = Tr_ExpList(cur_arg.exp, call_args);
                 //temporarily, set all parameters to be escape
-                Tr_access acc = Tr_allocLocal(l, 1);
+                //Tr_access acc = Tr_allocLocal(l, 1);
 				if(cur_arg.ty->kind != formal->head->kind){
 					//printf("%d %d\n", cur_arg.ty->u.name.ty, formal->head->kind);
 					//EM_error(arg->head->pos, "argument type mismatch");
@@ -216,8 +218,13 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a, Tr_level l, Temp_labe
 				EM_error(a->pos, "para type mismatch");
 				return expTy(Tr_nop(), result);
 			}
+            //reverse the reversed call_args back
+            Tr_expList real_args = NULL;
+            for(Tr_expList p = call_args; p; p = p->tail){
+                real_args = Tr_ExpList(p->head, real_args);
+            }
 			//ent->u.fun.level: declared level; l: used level
-			return expTy(Tr_callExp(ent->u.fun.label, ent->u.fun.level, l), result);
+			return expTy(Tr_callExp(ent->u.fun.label, ent->u.fun.level, l, real_args), result);
 		}
 		case A_recordExp:{
 			//S_symbol typ = get_recordexp_typ(a);
@@ -394,17 +401,20 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a, Tr_level l, Temp_labe
 			//book
 			//let D in E end
 			struct expty exp;
+            Tr_expList el = NULL;
 			A_decList d;
 			S_beginScope(venv);
 			S_beginScope(tenv);
 			for(d = get_letexp_decs(a); d; d = d->tail){
-				transDec(venv, tenv, d->head, l, label);
+				Tr_exp e = transDec(venv, tenv, d->head, l, label);
+                el = Tr_ExpList(e, el);
 			}
 			exp = transExp(venv, tenv, get_letexp_body(a), l, label);
+            el = Tr_ExpList(exp.exp, el);
 			S_endScope(venv);
 			S_endScope(tenv);
+			exp.exp = Tr_seqExp(el);
 			return exp;
-			
 		}
 		
 		case A_arrayExp:{
@@ -434,11 +444,13 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 			//E_enventry x1 = S_look(tenv, typ);
 			//Ty_print(x1->u.var.ty);
 			struct expty e = transExp(venv, tenv, init, l, label);
-
+            
 			if(typ == NULL && init->kind != A_recordExp && init->kind != A_arrayExp 
 				&& init->kind != A_nilExp){
-				S_enter(venv, var, E_VarEntry(Tr_allocLocal(l, escape), e.ty));
-				return e.exp;
+                Tr_access cur_acc = Tr_allocLocal(l, escape);
+				S_enter(venv, var, E_VarEntry(cur_acc, e.ty));
+				//return e.exp;
+                return Tr_assignExp(Tr_simpleVar(cur_acc, l), e.exp);
 			}
 			else{
 				if(e.ty->kind != Ty_nil){
@@ -527,9 +539,9 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 						}
 
 					}
-					
-					S_enter(venv, var, E_VarEntry(Tr_allocLocal(l, escape), e.ty));
-					return e.exp;
+                    Tr_access cur_acc = Tr_allocLocal(l, escape);
+					S_enter(venv, var, E_VarEntry(cur_acc, e.ty));
+					return Tr_assignExp(Tr_simpleVar(cur_acc, l), e.exp);
 				}
 				else{
 					if(typ){
@@ -625,9 +637,24 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 				}
                 boolList = U_BoolList(1, boolList);
 				newLevel =  Tr_newLevel(l, newLabel, boolList);
-                for(t = formalTys, ls = ls_backup; ls; ls = ls->tail, t = t->tail){
+                //Here, the positions should be RDI, RSI,... (updated 20181221) 
+                //Original implementation is wrong. No need to allocLocal!
+                int cnt = 0;
+                for(t = formalTys, ls = ls_backup; ls; ls = ls->tail, t = t->tail, cnt++){
                     //printf("%s: %s\n", S_name(f->name), S_name(ls->head->name));
-					S_enter(venv, ls->head->name, E_VarEntry(Tr_allocLocal(newLevel, ls->head->escape), t->head));
+                    Temp_temp reg;
+                    if(cnt<5){
+                        if(cnt==0) reg = F_RSI();
+                        else if(cnt==1) reg = F_RDX();
+                        else if(cnt==2) reg = F_RCX();
+                        else if(cnt==3) reg = F_R8();
+                        else if(cnt==4) reg = F_R9();
+                        S_enter(venv, ls->head->name, E_VarEntry(Tr_Access(newLevel, InReg(reg)), t->head));
+                    }
+                    else{
+                        //because offset 0 is actually the static link. 8 = F_wordSize
+                        S_enter(venv, ls->head->name, E_VarEntry(Tr_Access(newLevel, InFrame(8 * (cnt-4))), t->head));
+                    }
 				}
 				ent = S_look(temp_venv, f->name);
 				if(!ent){
@@ -660,7 +687,8 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 				
 				//S_beginScope(tmp_venv);
 				struct expty ret_val = transExp(tmp_venv, tenv, f->body, ent->u.fun.level, ent->u.fun.label);
-                Tr_procEntryExit(newLevel, ret_val.exp, Tr_formals(newLevel));
+                Tr_procEntryExit(ent->u.fun.level, ret_val.exp, Tr_formals(ent->u.fun.level)); //fix a bug. originally using newLevel, but its (relatively) global.
+                
 				if(ret_val.ty->kind != resultTy->kind){
 					if(ret_val.ty->kind != Ty_nil && resultTy->kind == Ty_nil) EM_error(f->pos, "procedure returns value");
 					//TBD: return type mismatch is a problem!
@@ -742,7 +770,8 @@ F_fragList SEM_transProg(A_exp exp){
 	Tr_level OUTMOST = Tr_outermost();
 	S_table venv = E_base_venv();
 	S_table tenv = E_base_tenv();
-	transExp(venv, tenv, exp, OUTMOST, label);
+	struct expty final = transExp(venv, tenv, exp, OUTMOST, label);
+    Tr_procEntryExit(OUTMOST, final.exp, Tr_formals(OUTMOST));
 	return Tr_getResult();
 }
 

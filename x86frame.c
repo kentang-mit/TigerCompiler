@@ -11,6 +11,12 @@
 
 /*Lab5: Your implementation here.*/
 
+int F_numRegisters(){
+    return 14; //not allowed to use RBP, RSP
+}
+
+extern Temp_map F_tempMap;
+
 //frame pointer(%rbp), return value(%rax)
 void F_initMap(){
     if(F_tempMap != NULL) return;
@@ -32,6 +38,26 @@ void F_initMap(){
     Temp_enter(F_tempMap, F_R14(), String("%r14"));
     Temp_enter(F_tempMap, F_R15(), String("%r15"));
 }
+
+Temp_map F_getTempMap(){
+    if(F_tempMap == NULL) F_initMap();
+    return F_tempMap;
+}
+
+Temp_tempList F_MachineRegisters(){
+    if(!F_machineRegisters) F_machineRegisters = Temp_TempList(F_FP(), Temp_TempList(F_RV(), Temp_TempList(F_RDX(), Temp_TempList(F_RDI(), 
+              Temp_TempList(F_RSI(), Temp_TempList(F_RCX(), Temp_TempList(F_SP(), Temp_TempList(F_RBX(),
+              Temp_TempList(F_R8(), Temp_TempList(F_R9(), Temp_TempList(F_R10(), Temp_TempList(F_R11(),
+              Temp_TempList(F_R12(), Temp_TempList(F_R13(), Temp_TempList(F_R14(), Temp_TempList(F_R15(), NULL))))))))))))))));
+    return F_machineRegisters;
+}
+
+Temp_tempList F_calleeSavedRegisters(){
+    if(!F_calleeSaved) F_calleeSaved = Temp_TempList(F_FP(), Temp_TempList(F_RBX(), Temp_TempList(F_R12(), Temp_TempList(F_R13(), 
+                              Temp_TempList(F_R14(), Temp_TempList(F_R15(), Temp_TempList(F_RDI(), Temp_TempList(F_RSI(), NULL)))))))); 
+    return F_calleeSaved;
+}
+
 Temp_temp F_FP(void){
 	//rbp
 	if(FP==NULL) FP = Temp_newtemp();
@@ -166,40 +192,47 @@ F_frame F_newFrame(Temp_label label, U_boolList escapes){
 	fm->size = 0;
 	fm->label = label;
 	fm->escapes = escapes;
-    fm->accessList = NULL;
+    fm->accessList = fm->accessList_l = NULL;
 	//64 bit
 	int cnt = 0;
-
+    
 	//allocate space for formals
-	F_accessList tmp_list = NULL;
+	//F_accessList tmp_list = NULL;
 	for(U_boolList p = escapes; p; p = p -> tail, cnt++){
-		F_access cur_acc = F_allocLocal(fm, p->head);
-		tmp_list = F_AccessList(cur_acc, tmp_list);
+		F_allocLocal(fm, p->head);
+        //F_access cur_acc = F_allocLocal(fm, p->head);
+		//tmp_list = F_AccessList(cur_acc, tmp_list);
 	}
 	//reverse storage
     
+    /*
 	F_accessList ans = NULL;
 	for(F_accessList p = tmp_list; p; p = p->tail){
 		ans = F_AccessList(p->head, ans);
 	}
 	fm->accessList = ans;
-    
+    */
 	return fm;
 }             
 
 string F_name(F_frame f){
     return Temp_labelstring(f->label);
 }
+
 //allocate a local param on stack. may need to change according to x86.
 F_access F_allocLocal(F_frame f, bool escape){
 	if(!escape){
         F_access ret = InReg(Temp_newtemp());
+        if(!(f->accessList)) f->accessList = f->accessList_l = F_AccessList(ret, NULL);
+        else f->accessList_l = f->accessList_l->tail = F_AccessList(ret, NULL);
         return ret;
     }
 	else{
 		int offset = f->size + F_wordSize;
 		f->size += F_wordSize;
 		F_access ret = InFrame(offset);
+        if(!(f->accessList)) f->accessList = f->accessList_l = F_AccessList(ret, NULL);
+        else f->accessList_l = f->accessList_l->tail = F_AccessList(ret, NULL);
         return ret;
 	}
 }
@@ -221,7 +254,38 @@ T_exp F_externalCall(string s, T_expList args){
 	return T_Call(T_Name(Temp_namedlabel(s)), args);
 }
 
+static Temp_tempList L(Temp_temp t, Temp_tempList l){
+    return Temp_TempList(t, l);
+}
+
 //dummy implementation. Will be replaced at page 267(ENG book).
-T_stm F_procEntryExit1(F_frame frame, T_stm stm) { 
+T_stm F_procEntryExit1(F_frame frame, T_stm stm) {
+    
 	return stm;
+}
+
+//produce the live variables after procedure
+AS_instrList F_procEntryExit2(AS_instrList body) {
+    Temp_tempList returnSink = L(F_RV(), L(F_SP(), L(F_FP(), F_calleeSavedRegisters())));
+	return AS_splice(body, AS_InstrList(AS_Oper("", NULL, returnSink, NULL), NULL));
+}
+
+//prologue and epilogue.
+//prologue: adjust rbp rsp allocate space for the new frame(pushq %rbp; movq %rsp, %rbp;)
+//epilogue: adjust rbp rsp (leave ret) where leave=movq %rbp, %rsp; popq %rbp;(clean the new frame)
+AS_proc F_procEntryExit3(F_frame frame, AS_instrList body){
+    int fsize = frame->size;
+    char buffer[100];
+    AS_instr pro1 = AS_Oper(String("pushq `s0"), NULL, L(F_FP(), NULL), NULL);
+    AS_instr pro2 = AS_Oper(String("movq `s0, `d0"), L(F_FP(), NULL), L(F_SP(), NULL), NULL);
+    sprintf(buffer, "subq $%d, `s0", fsize);
+    AS_instr pro3 = AS_Oper(String(buffer), L(F_SP(), NULL), L(F_SP(), NULL), NULL);
+    
+    AS_instr epi1 = AS_Oper(String("leaveq"), L(F_SP(), NULL), L(F_FP(), NULL), NULL);
+    AS_instr epi2 = AS_Oper(String("ret"), NULL, NULL, NULL);
+    
+    AS_instrList prologue =  AS_InstrList(pro1, AS_InstrList(pro2, AS_InstrList(pro3, NULL)));
+    AS_instrList epilogue = AS_InstrList(epi1, AS_InstrList(epi2, NULL));
+    AS_proc proc = AS_Proc(prologue, body, epilogue);
+    return proc;
 }

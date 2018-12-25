@@ -22,7 +22,10 @@ typedef struct Tr_accessList_ *Tr_accessList;
 
 
 typedef struct Tr_expList_ *Tr_expList;
-
+struct Tr_expList_{
+	Tr_exp head;
+	Tr_expList tail;
+};
 
 typedef struct patchList_ *patchList;
 struct patchList_ 
@@ -69,7 +72,7 @@ Tr_exp Tr_arrayExp(Tr_exp cnt, Tr_exp value);
 Tr_exp Tr_whileExp(Tr_exp cond_exp, Tr_exp body_exp, Temp_label bTarget);
 Tr_exp Tr_forExp(Tr_exp id_exp, Tr_exp lo, Tr_exp hi, Tr_exp body_exp, Temp_label bTarget);
 Tr_exp Tr_breakExp(Temp_label bTarget);
-Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level);
+Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level, Tr_expList args);
 Tr_exp Tr_assignExp(Tr_exp var, Tr_exp e);
 Tr_exp Tr_ifExp(Tr_exp if_exp, Tr_exp then_exp, Tr_exp else_exp);
 Tr_exp Tr_seqExp(Tr_expList expList);
