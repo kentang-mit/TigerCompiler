@@ -10,3 +10,6 @@ Preliminary implementation for the codegen module, fix some bugs in IR translati
 Dec 25, 2018
 
 Start debugging assembly codes.
+
+Dec 27, 2018
+7 Programs can be run.
