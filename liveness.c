@@ -10,6 +10,7 @@
 #include "flowgraph.h"
 #include "liveness.h"
 #include "table.h"
+#include "string.h"
 
 G_nodeList vis_seq = NULL;
 G_table mark_table, in_live_table, out_live_table;
@@ -122,6 +123,28 @@ static Temp_tempList union_tempList(Temp_tempList t1, Temp_tempList t2){
     return first;
 }
 
+static Temp_tempList intersect_tempList(Temp_tempList t1, Temp_tempList t2){
+    Temp_tempList p1, p2;
+    Temp_tempList first = NULL, last = NULL;
+    //use hash map to accelerate
+    Temp_map m = Temp_empty();
+    for(p1 = t1; p1; p1 = p1->tail){
+       Temp_temp cur1 = p1->head;
+       Temp_enter(m, cur1, String("")); 
+    }
+    for(p2 = t2; p2; p2 = p2->tail){
+       Temp_temp cur2 = p2->head;
+       if(!Temp_look(m, cur2)) continue;
+       Temp_enter(m, cur2, String("")); 
+       if(!first) first = Temp_TempList(cur2, NULL);
+       else if(!last){
+            first->tail = last = Temp_TempList(cur2, NULL);
+       }
+       else last = last->tail = Temp_TempList(cur2, NULL);
+    }
+    return first;
+}
+
 static Temp_tempList Live_succ_union(G_node n){
     //out[n] = U{s in succ[n]} in[s]
     G_nodeList n_succ = G_succ(n);
@@ -223,8 +246,8 @@ struct Live_graph Live_liveness(G_graph flow) {
             Temp_tempList n_out_backup = copy_tempList(n_out);
             Temp_tempList n_use = FG_use(n);
             Temp_tempList n_def = FG_def(n);
-            n_out = Live_succ_union(n);
-            //n_out = union_tempList(n_out, Live_succ_union(n));
+            //n_out = Live_succ_union(n);
+            n_out = union_tempList(n_out, Live_succ_union(n));
             n_in = union_tempList(n_use, diff_tempList(n_out, n_def));
             //need to enter into the live map
             enterLiveMap(in_live_table, n, n_in);
@@ -301,6 +324,30 @@ struct Live_graph Live_liveness(G_graph flow) {
                 G_addEdge(node2, node1);
             }
         }
+        //20181225 A special case for caller saved registers. If a Temp_temp lives across a call, then it is conflict with all caller-saved registers.
+        string assem = cur_instr->u.OPER.assem;
+        if(assem[0] == 'c' && assem[1] == 'a' && assem[2] == 'l'){
+            Temp_tempList intersect_in_out = intersect_tempList(n_in, n_out);
+            G_nodeList out_nodes = NULL;
+            if(intersect_in_out == NULL) continue;
+            else intersect_in_out = union_tempList(intersect_in_out, F_callerSavedRegisters());
+            for(Temp_tempList p = intersect_in_out; p; p = p->tail){
+                G_node cur = Live_lookupTempMap(m, p->head);
+                if(!cur){
+                    cur = G_Node(live, p->head);
+                    Live_enter(m, p->head, cur);
+                }
+                out_nodes = G_NodeList(cur, out_nodes);
+            }
+            for(G_nodeList i = out_nodes; i; i = i->tail){
+                for(G_nodeList j = i->tail; j; j = j->tail){
+                    G_node node1 = i->head, node2 = j->head;
+                    G_addEdge(node1, node2);
+                    G_addEdge(node2, node1);
+                }
+            }
+        }
+        
         
     }
     lg.graph = live;

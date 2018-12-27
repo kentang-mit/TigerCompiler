@@ -90,13 +90,12 @@ struct expty transVar(S_table venv, S_table tenv, A_var v, Tr_level l, Temp_labe
 			Ty_ty var_ty = var_trans.ty;
 			if(var_ty->kind == Ty_record){
 				Ty_fieldList fl = var_ty->u.record;
-				for(; fl; fl = fl->tail){
+				for(int cnt = 0; fl; fl = fl->tail, ++cnt){
 					S_symbol cur_field_id = fl->head->name;
 					if(cur_field_id == id){
 						Ty_ty cur_field_ty = fl->head->ty;
-						//exp: need base, offset. offset related to heap, cannot be done in lab5.
-                        return expTy(Tr_fieldVar(var_trans.exp, 0), cur_field_ty);
-						//return expTy(Tr_fieldVar(var_trans.exp, x->u.var.access->access->u.offset), cur_field_ty);
+						//exp: need base, offset. offset related to position on stack
+                        return expTy(Tr_fieldVar(var_trans.exp, cnt), cur_field_ty);
 					}
 				}
 				EM_error(var->pos, "field %s doesn't exist", S_name(id));
@@ -230,11 +229,14 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a, Tr_level l, Temp_labe
 			//S_symbol typ = get_recordexp_typ(a);
 			A_efieldList fields = get_recordexp_fields(a);
 			Ty_fieldList fl = NULL;
+            int cnt = 0;
+            Tr_expList fieldExps = NULL;
 			while(fields){
 				S_symbol field_symbol = fields->head->name;
 				//S_look should return E_enventry
 				A_exp field_exp = fields->head->exp;
 				struct expty field_expty = transExp(venv, tenv, field_exp, l, label);
+                fieldExps = Tr_ExpList(field_expty.exp, fieldExps);
 				Ty_ty field_ty = field_expty.ty;
 				Ty_field field = Ty_Field(field_symbol, field_ty);
 				if(!fl){	
@@ -245,9 +247,10 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a, Tr_level l, Temp_labe
 					fl = new_fl;
 				}
 				fields = fields->tail;
+                ++cnt;
 			}
 			//This Tr_exp term is problematic
-			return expTy(Tr_recordExp(0), Ty_Record(fl));
+			return expTy(Tr_recordExp(cnt, fieldExps, l), Ty_Record(fl));
 		}
 		case A_seqExp:{
 			A_expList cur_exp = get_seqexp_seq(a);
@@ -589,7 +592,8 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
                 if(actual_cur_ty->kind==Ty_record){
                     Ty_fieldList fl = actual_cur_ty->u.record;
                     for(;fl && fl->head;fl=fl->tail){
-                        S_enter(venv, fl->head->name, E_VarEntry(Tr_Access(l,NULL), fl->head->ty));
+                        //S_enter(venv, fl->head->name, E_VarEntry(Tr_Access(l,NULL), fl->head->ty));
+                        S_enter(venv, fl->head->name, E_VarEntry(Tr_allocLocal(l, 1), fl->head->ty));
                     }
                 }
                 //printf("ACTUAL TY: %d\n", actual_cur_ty->kind);
@@ -600,7 +604,7 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 					EM_error(d->pos, "illegal type cycle");
 				}
 				//The Tr_access term is not important here!
-				S_enter(tenv, typ->head->name, E_VarEntry(Tr_Access(l,NULL), actual_cur_ty));
+				S_enter(tenv, typ->head->name, E_VarEntry(Tr_allocLocal(l, 1), actual_cur_ty));
 			}
 			//printf("end\n");
 			return Tr_nop();

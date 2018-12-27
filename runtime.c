@@ -29,9 +29,14 @@ int stringEqual(struct string *s, struct string *t)
  return 1;
 }
 
+/*
 void print(struct string *s)
 {int i; unsigned char *p=s->chars;
  for(i=0;i<s->length;i++,p++) putchar(*p);
+}
+*/
+void print(char *s){
+    printf("%s", s);
 }
 
 void printi(int k)
@@ -53,7 +58,7 @@ int main()
    {consts[i].length=1;
     consts[i].chars[0]=i;
    }
- return tigermain(0 /* static link */);
+  return tigermain(0 /* static link */);
 }
 
 int ord(struct string *s)

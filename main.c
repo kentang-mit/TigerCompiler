@@ -75,21 +75,27 @@ static void doProc(FILE *out, F_frame frame, T_stm body)
  Live_print(lg);
  */
  printf("----======before RA=======-----\n");
- struct RA_result ra = RA_regAlloc(frame, iList);  /* 11 */
-
+ proc = F_procEntryExit3(frame, iList);
+ struct RA_result ra = RA_regAlloc(frame, proc->body);  /* 11 */
+ 
  printf("----======end RA=======-----\n");
  
  //12.19 NOT IMPLEMENTED (after "end RA")
+ /*
  string procName = F_name(frame);
  fprintf(out, ".text\n");
  fprintf(out, ".globl %s\n", procName);
  fprintf(out, ".type %s, @function\n", procName);
  fprintf(out, "%s:\n", procName);
- proc =  F_procEntryExit3(frame, iList);
- AS_printInstrList(out, proc->prolog, Temp_layerMap(ra.coloring, Temp_name()));
- AS_printInstrList(out, iList, Temp_layerMap(ra.coloring, Temp_name()));
- AS_printInstrList(out, proc->epilog, Temp_layerMap(ra.coloring, Temp_name()));
- //fprintf(out, "END %s\n\n", F_name(frame));
+ */
+ proc->body = ra.il;
+ char size_buf[50];
+ sprintf(size_buf, "subq $%d, `s0", frame->size);
+ proc->body->tail->tail->head->u.OPER.assem = String(size_buf);
+ fprintf(out, "%s", proc->prolog);
+ AS_printInstrList(out, ra.il, Temp_layerMap(ra.coloring, Temp_name()));
+ fprintf(out, "%s", proc->epilog);
+    //fprintf(out, "END %s\n\n", F_name(frame));
 
  //Part of TA's implementation. Just for reference.
  /*

@@ -34,12 +34,12 @@ void AS_printInstrList (FILE *out, AS_instrList iList, Temp_map m);
 typedef struct AS_proc_ *AS_proc;
 //original: prolog and epilog are strings
 struct AS_proc_ {
-  AS_instrList prolog;
+  string prolog;
   AS_instrList body;
-  AS_instrList epilog;
+  string epilog;
 };
 
-AS_proc AS_Proc(AS_instrList p, AS_instrList b, AS_instrList e);
+AS_proc AS_Proc(string p, AS_instrList b, string e);
 
 
 //TA's implementation. Just for reference.

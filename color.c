@@ -830,7 +830,7 @@ void assignColors(){
         bool exist_color = 0;
         int first_available_color = -1;
         for(int i = 0; i < reg_num; i++){
-            exist_color |= OK_colors[i];
+            if(OK_colors[i]) exist_color = 1;
             if(OK_colors[i] && first_available_color < 0) first_available_color = i;
         }
         if(!exist_color){
@@ -893,12 +893,14 @@ struct COL_result COL_color(G_graph ig, Temp_map initial, Temp_tempList regs, Li
         else if(freezeWorkList_f && freezeWorkList_f->node!=NULL) freeze();
         else if(spillWorkList_f && spillWorkList_f->node!=NULL) selectSpill();
     }
+    
+    assignColors();
+    
     Temp_tempList spilledTemps = NULL;
     for(G_nodeList p = spilledNodes; p; p = p->tail){
         spilledTemps = Temp_TempList(G_nodeInfo(p->head), spilledTemps);
     }
     ret.spills = spilledTemps;
-    assignColors();
     for(G_nodeList p = coloredNodes; p; p = p->tail){
         COL_inf inf = COL_infLook(COL_information, p->head);
         int color = inf->color;
@@ -911,9 +913,11 @@ struct COL_result COL_color(G_graph ig, Temp_map initial, Temp_tempList regs, Li
     for(G_nodeList p = G_nodes(ig); p; p = p->tail){
         G_node cur = p->head;
         COL_inf inf = COL_infLook(COL_information, cur);
-        printf("Reg %d: %d %s\n", Temp_int(G_nodeInfo(cur)), inf->kind, COL_colors[inf->color]);
+        //printf("Reg %d: %d %s\n", Temp_int(G_nodeInfo(cur)), inf->kind, COL_colors[inf->color]);
+        printf("Reg %d: %d %d\n", Temp_int(G_nodeInfo(cur)), inf->kind, inf->color);
     }
     ret.coloring = initial;
+    
 	return ret;
 }
 

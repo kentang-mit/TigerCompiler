@@ -192,27 +192,15 @@ static struct Cx unCx(Tr_exp e){
 	switch(e->kind){
 		case Tr_cx: return e->u.cx;
 		case Tr_ex: {
-			Temp_label t = Temp_newlabel();
-			Temp_label f = t;
-			T_stm stm = T_Seq(T_Cjump(T_ne, e->u.ex, T_Const(0), t, f), T_Label(t));
-			/*
-			if(e->u.ex->kind == T_CONST && (e->u.ex->u.CONST == 0 || e->u.ex->u.CONST==1) ){
-				stm = T_Exp(T_Const(e->u.ex->u.CONST));
-					
-			}
-			else{
-				stm = unNx(e);
-			}
-			*/
-
-			//uncertain about jumping to which position
-			patchList trues = PatchList(&t, NULL);
-			patchList falses = PatchList(&f, NULL);
-			struct Cx *cx = (struct Cx *)checked_malloc(sizeof(*cx));
-			cx->stm = stm;
-			cx->trues = trues;
-			cx->falses = falses;
-			return *cx;	
+            struct Cx cx;
+			T_stm s = T_Cjump(T_ne, e->u.ex, T_Const(0), NULL, NULL);
+			patchList trues = PatchList(&s->u.CJUMP.true, NULL);
+			patchList falses = PatchList(&s->u.CJUMP.false, NULL);
+			cx.trues = trues;
+			cx.falses = falses;
+			cx.stm = s;
+			return cx;
+			
 		}
 		default:break;
 	}
@@ -315,8 +303,17 @@ Tr_exp Tr_stringExp(string s){
 }
 
 //creation of a record TBD: initialization? return a ptr?
-Tr_exp Tr_recordExp(int cnt){
-	return Tr_Ex(F_externalCall(String("allocRecord"), T_ExpList(T_Const(cnt), NULL)));
+Tr_exp Tr_recordExp(int cnt, Tr_expList expList, Tr_level l){
+    //non-escape. Tr_level l is passed to make sure this address can be accessed.
+    Tr_access ra = Tr_allocLocal(l, 0);
+    Temp_temp r = ra->access->u.reg;
+	T_stm move_inst = T_Move(T_Temp(r), F_externalCall(String("allocRecord"), T_ExpList(T_Const(cnt * F_wordSize), NULL)));
+    T_stm ret = move_inst;
+    int i = 0;
+    for(Tr_expList p = expList; p; p = p->tail, i++){
+        ret = T_Seq(ret, T_Move(T_Mem(T_Binop(T_plus, T_Temp(r), T_Const(i*F_wordSize))), unEx(p->head)));
+    }
+    return Tr_Ex(T_Eseq(ret, T_Temp(r)));
 	//return Tr_Ex(T_Call(T_Name(Temp_namedlabel("initRecord")), T_ExpList(T_Const(cnt), NULL)));
 }
 
@@ -376,6 +373,7 @@ Tr_exp Tr_breakExp(Temp_label bTarget){
 //call a function. fun_level: declared level, cur_level: call level. static link as first param.
 //update on 20181221: Previous implementation is wrong. The lis should contain all actual positions, consisting of 
 //T_exp terms of translated arguments.
+//update on 20181226: runtime functions do not use static link.
 Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level, Tr_expList args){
 	T_expList rev_lis = NULL;
     //printf("%d %d\n", cur_level, fun_level);
@@ -395,8 +393,11 @@ Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level, 
 	for(T_expList expl = rev_lis; expl; expl = expl->tail){
 		lis = T_ExpList(expl->head, lis);
 	}
-	lis = T_ExpList(sl, lis);
-	return Tr_Ex(T_Call(T_Name(fun_label),lis));
+    
+    if(strcmp((char*)Temp_labelstring(fun_label), "printi")!=0 && strcmp((char*)Temp_labelstring(fun_label), "print")!=0){lis = T_ExpList(sl, lis);}
+    return Tr_Ex(T_Call(T_Name(fun_label),lis));
+    //T_exp callex = T_Call(T_Name(fun_label),lis);
+    //return Tr_Ex(T_Move(T_Temp(F_RV()), unEx(callex)));
 }
 
 //assign exp
@@ -466,6 +467,8 @@ Tr_exp Tr_ifExp(Tr_exp if_exp, Tr_exp then_exp, Tr_exp else_exp){
 					T_Eseq(T_Move(T_Temp(r),else_ex),
 					T_Eseq(T_Label(done), T_Temp(r))
 					)))))));
+        //pr_stm(stdout, if_cx.stm, 0);
+        //assert(0);
 		return Tr_Ex(ret);
 	}
     
@@ -489,7 +492,8 @@ Tr_exp Tr_seqExp(Tr_expList expList){
 
 void Tr_procEntryExit(Tr_level level, Tr_exp body, Tr_accessList formals){
 	//the second param of procEntryExit is uncertain.
-	T_stm body_stm = F_procEntryExit1(level->frame, unNx(body));
+    //1227 move the return value to %rax
+	T_stm body_stm = F_procEntryExit1(level->frame, T_Move(T_Temp(F_RV()), unEx(body)));
 	glbl = F_FragList(F_ProcFrag(body_stm, level->frame), glbl);
 }
 

@@ -121,19 +121,24 @@ static Temp_temp munchExp(T_exp e){
 			}
 			Temp_temp left_op = munchExp(e1);
 			if(result != left_op){
-				if(e1->kind != T_CONST) emit(AS_Move("movq `s0, `d0", L(result, NULL), L(left_op, NULL)));
-				else{
-					sprintf(buffer, "movq $%d, `d0", e1->u.CONST);
-					emit(AS_Oper(String(buffer), L(result, NULL), NULL, NULL));
-				}
+                if(e->u.BINOP.op!=T_div){
+                    if(e1->kind != T_CONST) emit(AS_Move("movq `s0, `d0", L(result, NULL), L(left_op, NULL)));
+                    else{
+                        sprintf(buffer, "movq $%d, `d0", e1->u.CONST);
+                        emit(AS_Oper(String(buffer), L(result, NULL), NULL, NULL));
+                    }
+                }
 			}
 			if(e2->kind == T_CONST){
-				sprintf(buffer, "%s $%d, `d0", oper, e2->u.CONST);
-				emit(AS_Oper(String(buffer), L(result, NULL), L(result, NULL), NULL));
-				return result;
+                if(e->u.BINOP.op!=T_div){
+                    sprintf(buffer, "%s $%d, `d0", oper, e2->u.CONST);
+                    if(e->u.BINOP.op!=T_div) emit(AS_Oper(String(buffer), L(result, NULL), L(result, NULL), NULL));
+                    return result;
+                }
 			}
 			Temp_temp right_op = munchExp(e2);
 			sprintf(buffer, "%s `s0, `d0", oper);
+            
 			if(e->u.BINOP.op != T_div){
 				emit(AS_Oper(String(buffer), L(result, NULL), L(right_op, L(result, NULL)), NULL));
 			}
@@ -149,11 +154,6 @@ static Temp_temp munchExp(T_exp e){
 			return result;
 		}
 		case T_TEMP: return e->u.TEMP;
-		case T_NAME:{
-			//label usage(only appear in j/cond-j). Normal case: should be dealt with in munchStm.
-            printf("This is from T_Call.\n");
-            return Temp_newtemp();
-		}
 		case T_CONST: {
             //pr_tree_exp(stdout, e, 0);
 			Temp_temp result = Temp_newtemp();
@@ -164,14 +164,23 @@ static Temp_temp munchExp(T_exp e){
 		case T_CALL:{
 			//It is responsible for moving all params. to %rdi, %rci, ... and push some params on stack.
 			//Don't care view shift. These are done by F_procEntryExitx()
-			Temp_tempList calldefs = L(F_RV(), L(F_RCX(), L(F_RDX(), L(F_R8(), L(F_R9(), L(F_R10(), L(F_R11(), NULL)))))));
+			Temp_tempList calldefs = F_callerSavedRegisters();
 			//first do munch args
             Temp_tempList l = munchArgs(0, e->u.CALL.args);
-            Temp_temp r = munchExp(e->u.CALL.fun);
+            //Temp_temp r = munchExp(e->u.CALL.fun);
             //emit(AS_Oper(String("call `s0"), calldefs, L(r,l), NULL));
 			sprintf(buffer, "call %s", Temp_labelstring(e->u.CALL.fun->u.NAME));
             emit(AS_Oper(String(buffer), calldefs, l, NULL));
             return F_RV();
+		}
+        case T_NAME:{
+			//label usage(only appear in j/cond-j). Normal case: should be dealt with in munchStm.
+            //20181226 It is also possible that this is from a string!
+            Temp_temp r = Temp_newtemp();
+            sprintf(buffer, "leaq .%s(\%rip), `d0", Temp_labelstring(e->u.NAME));
+			string as = String(buffer);
+			emit(AS_Oper(as, L(r, NULL), NULL, NULL));
+            return r;
 		}
 		default: assert(0);
 	}
@@ -186,28 +195,31 @@ static void munchStm(T_stm s){
 					dst->u.MEM->u.BINOP.left->kind == T_CONST){//5
 					Temp_temp r_src = munchExp(src);
 					Temp_temp dst_r = munchExp(dst->u.MEM->u.BINOP.right);
-					sprintf(buffer, "movq `s0, `$%d(`d0)", dst->u.MEM->u.BINOP.left->u.CONST);
-					emit(AS_Oper(String(buffer), L(dst_r, NULL), L(r_src, NULL), NULL));
+                    //fix a bug. The dst is also a used node!
+					sprintf(buffer, "movq `s0, `$%d(`s1)", dst->u.MEM->u.BINOP.left->u.CONST);
+					emit(AS_Oper(String(buffer), NULL, L(r_src, L(dst_r, NULL)), NULL));
 					return;
 				}
 				else if(dst->u.MEM->kind == T_BINOP && dst->u.MEM->u.BINOP.op == T_plus && 
 					dst->u.MEM->u.BINOP.right->kind == T_CONST){//5
 					Temp_temp r_src = munchExp(src);
 					Temp_temp dst_l = munchExp(dst->u.MEM->u.BINOP.left);
-					sprintf(buffer, "movq `s0, %d(`d0)", dst->u.MEM->u.BINOP.right->u.CONST);
-					emit(AS_Oper(String(buffer), L(dst_l, NULL), L(r_src, NULL), NULL));
+                    //fix a bug. The dst is also a used node!
+					sprintf(buffer, "movq `s0, %d(`s1)", dst->u.MEM->u.BINOP.right->u.CONST);
+					emit(AS_Oper(String(buffer), NULL, L(r_src, L(dst_l, NULL)), NULL));
 					return;
 				}
 				else if(src->kind == T_MEM){//3
 					Temp_temp r_dst = munchExp(dst->u.MEM), r_src = munchExp(src->u.MEM);
 					Temp_temp r = Temp_newtemp();
 					emit(AS_Oper(String("movq (`s0), `d0"), L(r,NULL), L(r_src, NULL), NULL));
-					emit(AS_Oper(String("movq `s0, (`d0)"), L(r_dst,NULL), L(r, NULL), NULL));
+                    //fix a bug here. 1225
+					emit(AS_Oper(String("movq `s0, (`s1)"), NULL, L(r,L(r_dst, NULL)), NULL));
 					return;
 				}
 				else{//2
 					Temp_temp r_dst = munchExp(dst->u.MEM), r_src = munchExp(src);
-					emit(AS_Oper(String("movq `s0, (`d0)"), L(r_dst, NULL), L(r_src, NULL), NULL));
+					emit(AS_Oper(String("movq `s0, (`s1)"), NULL, L(r_src, L(r_dst, NULL)), NULL));
 					return;
 				}
 			}
@@ -239,8 +251,9 @@ static void munchStm(T_stm s){
 			}
             Temp_temp r_l = munchExp(s->u.CJUMP.left);
             Temp_temp r_r = munchExp(s->u.CJUMP.right);
-            sprintf(buffer, "cmp `d0, `s0");
-            emit(AS_Oper(String(buffer), L(r_l, L(r_r, NULL)), L(r_r, L(r_l, NULL)), NULL));
+            //X86 assembly is operand2 > operand1 corresponding to jg!!!
+            sprintf(buffer, "cmpq `s1, `s0");
+            emit(AS_Oper(String(buffer), NULL, L(r_l, L(r_r, NULL)), NULL));
 			sprintf(buffer, "%s `j0", oper);
             emit(AS_Oper(String(buffer), NULL, NULL, AS_Targets(Temp_LabelList(s->u.CJUMP.true,NULL))));
 			return;

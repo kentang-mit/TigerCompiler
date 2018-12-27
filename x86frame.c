@@ -52,10 +52,17 @@ Temp_tempList F_MachineRegisters(){
     return F_machineRegisters;
 }
 
+
 Temp_tempList F_calleeSavedRegisters(){
     if(!F_calleeSaved) F_calleeSaved = Temp_TempList(F_FP(), Temp_TempList(F_RBX(), Temp_TempList(F_R12(), Temp_TempList(F_R13(), 
-                              Temp_TempList(F_R14(), Temp_TempList(F_R15(), Temp_TempList(F_RDI(), Temp_TempList(F_RSI(), NULL)))))))); 
+                              Temp_TempList(F_R14(), Temp_TempList(F_R15(), NULL)))))); 
     return F_calleeSaved;
+}
+
+Temp_tempList F_callerSavedRegisters(){
+    if(!F_callerSaved)  F_callerSaved = Temp_TempList(F_RV(), Temp_TempList(F_RCX(), Temp_TempList(F_RDX(), Temp_TempList(F_R8(), 
+                              Temp_TempList(F_R9(), Temp_TempList(F_R10(), Temp_TempList(F_R11(), Temp_TempList(F_RDI(), Temp_TempList(F_RSI(), NULL)))))))));
+    return F_callerSaved;
 }
 
 Temp_temp F_FP(void){
@@ -145,7 +152,8 @@ Temp_temp F_RBX(void){
 F_access InFrame(int offset){
 	F_access f_acc = (F_access)checked_malloc(sizeof(*f_acc));
 	f_acc->kind = inFrame;
-	f_acc->u.offset = offset;
+    //should be minus. 20181226
+	f_acc->u.offset = -offset;
 	return f_acc;
 }
 
@@ -228,7 +236,7 @@ F_access F_allocLocal(F_frame f, bool escape){
         return ret;
     }
 	else{
-		int offset = f->size + F_wordSize;
+		int offset = f->size;
 		f->size += F_wordSize;
 		F_access ret = InFrame(offset);
         if(!(f->accessList)) f->accessList = f->accessList_l = F_AccessList(ret, NULL);
@@ -260,8 +268,23 @@ static Temp_tempList L(Temp_temp t, Temp_tempList l){
 
 //dummy implementation. Will be replaced at page 267(ENG book).
 T_stm F_procEntryExit1(F_frame frame, T_stm stm) {
+    Temp_tempList calleeSaved = F_calleeSavedRegisters();
+    T_stm ret = NULL;
+    Temp_tempList save_pos=NULL, save_pos_l=NULL;
+    for(Temp_tempList p = calleeSaved; p; p = p->tail){
+        Temp_temp save = Temp_newtemp();
+        if(!save_pos) save_pos = save_pos_l = L(save, NULL);
+        else save_pos_l = save_pos_l->tail = L(save, NULL);
+        T_stm cur = T_Move(T_Temp(save), T_Temp(p->head));
+        if(!ret) ret = cur;
+        else ret = T_Seq(ret, cur);
+    }
+    ret = T_Seq(ret, stm);
+    for(Temp_tempList p = calleeSaved, q = save_pos; p && q; p = p->tail, q = q->tail){
+        ret = T_Seq(ret, T_Move(T_Temp(p->head), T_Temp(q->head)));
+    }
     
-	return stm;
+	return ret;
 }
 
 //produce the live variables after procedure
@@ -275,7 +298,7 @@ AS_instrList F_procEntryExit2(AS_instrList body) {
 //epilogue: adjust rbp rsp (leave ret) where leave=movq %rbp, %rsp; popq %rbp;(clean the new frame)
 AS_proc F_procEntryExit3(F_frame frame, AS_instrList body){
     int fsize = frame->size;
-    char buffer[100];
+    char buffer[100], prolog[100], epilog[100];
     AS_instr pro1 = AS_Oper(String("pushq `s0"), NULL, L(F_FP(), NULL), NULL);
     AS_instr pro2 = AS_Oper(String("movq `s0, `d0"), L(F_FP(), NULL), L(F_SP(), NULL), NULL);
     sprintf(buffer, "subq $%d, `s0", fsize);
@@ -286,6 +309,13 @@ AS_proc F_procEntryExit3(F_frame frame, AS_instrList body){
     
     AS_instrList prologue =  AS_InstrList(pro1, AS_InstrList(pro2, AS_InstrList(pro3, NULL)));
     AS_instrList epilogue = AS_InstrList(epi1, AS_InstrList(epi2, NULL));
-    AS_proc proc = AS_Proc(prologue, body, epilogue);
+    AS_instrList final = F_procEntryExit2(AS_splice(prologue, body));
+    
+    string procName = F_name(frame);
+    sprintf(prolog, ".text\n.globl %s\n.type %s, @function\n%s:\n", procName, procName, procName);
+    sprintf(epilog, "leaveq\nret\n");
+    
+    
+    AS_proc proc = AS_Proc(String(prolog), final, String(epilog));
     return proc;
 }
