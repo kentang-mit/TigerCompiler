@@ -604,7 +604,8 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 					EM_error(d->pos, "illegal type cycle");
 				}
 				//The Tr_access term is not important here!
-				S_enter(tenv, typ->head->name, E_VarEntry(Tr_allocLocal(l, 1), actual_cur_ty));
+				S_enter(tenv, typ->head->name, E_VarEntry(
+                    (l, 1), actual_cur_ty));
 			}
 			//printf("end\n");
 			return Tr_nop();
@@ -641,24 +642,16 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 				}
                 boolList = U_BoolList(1, boolList);
 				newLevel =  Tr_newLevel(l, newLabel, boolList);
-                //Here, the positions should be RDI, RSI,... (updated 20181221) 
-                //Original implementation is wrong. No need to allocLocal!
+                //Original implementation is wrong. Still need to allocLocal! access the position in F_frame, not rdi, rsi, ...
                 int cnt = 0;
-                for(t = formalTys, ls = ls_backup; ls; ls = ls->tail, t = t->tail, cnt++){
-                    //printf("%s: %s\n", S_name(f->name), S_name(ls->head->name));
-                    Temp_temp reg;
-                    if(cnt<5){
-                        if(cnt==0) reg = F_RSI();
-                        else if(cnt==1) reg = F_RDX();
-                        else if(cnt==2) reg = F_RCX();
-                        else if(cnt==3) reg = F_R8();
-                        else if(cnt==4) reg = F_R9();
-                        S_enter(venv, ls->head->name, E_VarEntry(Tr_Access(newLevel, InReg(reg)), t->head));
-                    }
-                    else{
-                        //because offset 0 is actually the static link. 8 = F_wordSize
-                        S_enter(venv, ls->head->name, E_VarEntry(Tr_Access(newLevel, InFrame(8 * (cnt-4))), t->head));
-                    }
+                U_boolList b;
+                //Please notice that formalTys is reversed
+                Tr_accessList accl_ = Tr_formals(newLevel)->tail;
+                Tr_accessList accl = NULL;
+                for(Tr_accessList p=accl_;p;p=p->tail) accl = Tr_AccessList(p->head, accl);
+                for(t = formalTys, ls = ls_backup; ls; ls = ls->tail, accl = accl->tail, t = t->tail, cnt++){ 
+                   S_enter(venv, ls->head->name, E_VarEntry(accl->head, t->head));
+                    
 				}
 				ent = S_look(temp_venv, f->name);
 				if(!ent){
@@ -778,4 +771,5 @@ F_fragList SEM_transProg(A_exp exp){
     Tr_procEntryExit(OUTMOST, final.exp, Tr_formals(OUTMOST));
 	return Tr_getResult();
 }
+
 

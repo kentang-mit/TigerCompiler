@@ -147,8 +147,8 @@ static Temp_temp munchExp(T_exp e){
 				Temp_temp rax = F_RV();
 				Temp_temp rdx = F_RDX();
 				emit(AS_Move(String("movq `s0, `d0"), L(rax, NULL), L(left_op, NULL)));
-				emit(AS_Oper(String("cltq"), NULL, NULL, NULL));
-				emit(AS_Oper(String("idivq `s0"), L(rax, NULL), L(right_op, L(rax, L(rdx, NULL))), NULL));
+				emit(AS_Oper(String("xorq `s0, `d0"), L(rdx, NULL), L(rdx, NULL), NULL));
+				emit(AS_Oper(String("idivq `s0"), L(rdx, L(rax, NULL)), L(right_op, L(rax, NULL)), NULL));
 				emit(AS_Move(String("movq `s0, `d0"), L(result, NULL), L(rax, NULL)));
 			}
 			return result;

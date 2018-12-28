@@ -11,15 +11,14 @@
 #include "string.h"
 
 //LAB5: you can modify anything you want.
+Tr_level OUTERMOST = NULL;
+
 struct Tr_exp_ {
 	enum {Tr_ex, Tr_nx, Tr_cx} kind;
 	union {T_exp ex; T_stm nx; struct Cx cx; } u;
 };
 
-struct Tr_accessList_ {
-	Tr_access head;
-	Tr_accessList tail;	
-};
+
 
 //the Tr_level parent is used to maintain the static link?
 struct Tr_level_ {
@@ -81,7 +80,8 @@ Tr_accessList Tr_AccessList(Tr_access head, Tr_accessList tail){
 Tr_level Tr_outermost(void){
     //very important to have this U_boolList here! otherwise nothing can be added to the outmost frame.
     U_boolList formals =  U_BoolList(1, NULL);
-	return Tr_newLevel(NULL, Temp_namedlabel("tigermain"), formals);
+	if(!OUTERMOST) OUTERMOST = Tr_newLevel(NULL, Temp_namedlabel("tigermain"), formals);
+    return OUTERMOST;
 }
 
 Tr_level Tr_newLevel(Tr_level parent, Temp_label name, U_boolList formals){
@@ -355,8 +355,8 @@ Tr_exp Tr_forExp(Tr_exp id_exp, Tr_exp lo, Tr_exp hi, Tr_exp body_exp, Temp_labe
 	//doPatch(cond_cx.falses, bTarget);
 	return Tr_Nx(
 			T_Seq(T_Move(T_Temp(r_i), unEx(lo)),
-			T_Seq(T_Move(T_Temp(r_lim), unEx(hi)),
-			T_Seq(T_Label(test),			
+            T_Seq(T_Label(test),	
+			T_Seq(T_Move(T_Temp(r_lim), unEx(hi)),		
 			T_Seq(T_Cjump(T_gt, T_Temp(r_i), T_Temp(r_lim), bTarget, body),
 			T_Seq(T_Label(body),
 			T_Seq(unNx(body_exp),
@@ -374,11 +374,16 @@ Tr_exp Tr_breakExp(Temp_label bTarget){
 //update on 20181221: Previous implementation is wrong. The lis should contain all actual positions, consisting of 
 //T_exp terms of translated arguments.
 //update on 20181226: runtime functions do not use static link.
+//update on 20181228: If call level < declared level, static link = rbp. Else, static link = (%rbp)(should access one layer upper).
 Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level, Tr_expList args){
 	T_expList rev_lis = NULL;
     //printf("%d %d\n", cur_level, fun_level);
-	T_exp sl = Tr_staticLink(cur_level, fun_level)->u.ex;
+	//T_exp sl = Tr_staticLink(cur_level, fun_level)->u.ex;
 	Temp_temp fp = F_FP();
+    int flag = 0;
+    Tr_level p;
+    for(p = fun_level; p&&p != cur_level; p = p->parent);
+    if(p==cur_level && fun_level != cur_level) flag = 1;
     /*
 	Tr_accessList accs = Tr_formals(cur_level);
 	for(Tr_accessList acc = accs; acc; acc = acc->tail){
@@ -394,7 +399,10 @@ Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level, 
 		lis = T_ExpList(expl->head, lis);
 	}
     
-    if(strcmp((char*)Temp_labelstring(fun_label), "printi")!=0 && strcmp((char*)Temp_labelstring(fun_label), "print")!=0){lis = T_ExpList(sl, lis);}
+    if(strcmp((char*)Temp_labelstring(fun_label), "printi")!=0 && strcmp((char*)Temp_labelstring(fun_label), "print")!=0){
+        if(flag) lis = T_ExpList(T_Temp(fp), lis);
+        else lis = T_ExpList(T_Mem(T_Binop(T_plus, T_Temp(fp), T_Const(-8))), lis);
+    }
     return Tr_Ex(T_Call(T_Name(fun_label),lis));
     //T_exp callex = T_Call(T_Name(fun_label),lis);
     //return Tr_Ex(T_Move(T_Temp(F_RV()), unEx(callex)));
@@ -493,8 +501,38 @@ Tr_exp Tr_seqExp(Tr_expList expList){
 void Tr_procEntryExit(Tr_level level, Tr_exp body, Tr_accessList formals){
 	//the second param of procEntryExit is uncertain.
     //1227 move the return value to %rax
+    T_stm move_stm=NULL;
+    int cnt = 0;
+    //move all the formals to correct positions
+    
+    for(Tr_accessList p = Tr_formals(level); p; p = p->tail, cnt++){
+        Temp_temp reg;
+         if(cnt<=5){
+             if(cnt == 0) reg = F_RDI();
+             else if(cnt==1) reg = F_RSI();
+             else if(cnt==2) reg = F_RDX();
+             else if(cnt==3) reg = F_RCX();
+             else if(cnt==4) reg = F_R8();
+             else if(cnt==5) reg = F_R9();
+         }
+         else{
+             reg = Temp_newtemp();
+             move_stm = (move_stm!=NULL)? T_Seq(move_stm, T_Move(T_Mem(T_Binop(T_plus, T_Temp(F_FP()), T_Const((cnt-4)*8))), T_Temp(reg))) : T_Move( T_Mem(T_Binop(T_plus, T_Temp(F_FP()), T_Const((cnt-4)*8))), T_Temp(reg));
+             continue;
+         }
+         if(cnt==0&&level==Tr_outermost()) continue;
+         if(p->head->access->kind == inReg){
+             move_stm = (move_stm!=NULL)?T_Seq(move_stm, T_Move(T_Temp(p->head->access->u.reg), T_Temp(reg))): T_Move(T_Temp(p->head->access->u.reg), T_Temp(reg)); 
+         }
+         else{
+             move_stm = (move_stm!=NULL)? T_Seq(move_stm, T_Move(T_Mem(T_Binop(T_plus, T_Temp(F_FP()), T_Const(p->head->access->u.offset))), T_Temp(reg))) : T_Move(T_Mem(T_Binop(T_plus, T_Temp(F_FP()), T_Const(p->head->access->u.offset))),T_Temp(reg));
+         }
+         
+    }
+    
 	T_stm body_stm = F_procEntryExit1(level->frame, T_Move(T_Temp(F_RV()), unEx(body)));
-	glbl = F_FragList(F_ProcFrag(body_stm, level->frame), glbl);
+	if(move_stm) glbl = F_FragList(F_ProcFrag(T_Seq(move_stm, body_stm), level->frame), glbl);
+    else glbl = F_FragList(F_ProcFrag(body_stm, level->frame), glbl);
 }
 
 F_fragList Tr_getResult(){

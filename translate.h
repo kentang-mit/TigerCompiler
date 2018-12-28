@@ -18,8 +18,12 @@ struct Tr_access_{
 };
 typedef struct Tr_access_ *Tr_access;
 
+struct Tr_accessList_;
 typedef struct Tr_accessList_ *Tr_accessList;
-
+struct Tr_accessList_ {
+	Tr_access head;
+	Tr_accessList tail;	
+};
 
 typedef struct Tr_expList_ *Tr_expList;
 struct Tr_expList_{

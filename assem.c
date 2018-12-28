@@ -159,7 +159,7 @@ void AS_printInstrList (FILE *out, AS_instrList iList, Temp_map m)
 }
 
 //p,e:originally string
-AS_proc AS_Proc(AS_instrList p, AS_instrList b, AS_instrList e)
+AS_proc AS_Proc(string p, AS_instrList b, string e)
 {AS_proc proc = checked_malloc(sizeof(*proc));
  proc->prolog=p; proc->body=b; proc->epilog=e;
  return proc;
