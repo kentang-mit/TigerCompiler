@@ -1,5 +1,7 @@
 # TigerCompiler
-A Tiger compiler for the x86-64 architecture. Course project for SE302(Compilers).
+A Tiger compiler for the x86-64 architecture. 
+
+Course project for SE302(Compilers). Instructor: Prof. Binyu Zang; TAs: Mr. Dingji Li and Mr. Haoyu Li.
 
 Log:
 
@@ -12,4 +14,9 @@ Dec 25, 2018
 Start debugging assembly codes.
 
 Dec 27, 2018
+
 7 Programs can be run.
+
+Dec 30, 2018
+
+Passed all test cases, to implement the escape analysis.
