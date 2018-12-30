@@ -215,7 +215,6 @@ struct Live_graph Live_liveness(G_graph flow) {
 	struct Live_graph lg;
     Live_init();
     G_graph live = G_Graph();
-    
     Live_moveList live_ml_first = NULL, live_ml_last = NULL;
     
     //naive, just reverse the node list.

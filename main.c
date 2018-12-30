@@ -158,8 +158,7 @@ int main(int argc, string *argv)
 
    //Lab 6: escape analysis
    //If you have implemented escape analysis, uncomment this
-   //Esc_findEscape(absyn_root); /* set varDec's escape field */
-
+   Esc_findEscape(absyn_root); /* set varDec's escape field */
    frags = SEM_transProg(absyn_root);
    F_initMap();
    Temp_dumpMap(stdout, F_tempMap);

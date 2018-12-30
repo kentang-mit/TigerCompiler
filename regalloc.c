@@ -65,6 +65,32 @@ static void Temp_changeTempList(Temp_tempList l, Temp_temp to_replace, Temp_temp
     }
 }
 
+AS_instrList finalRewrite(AS_instrList il){
+    AS_instrList new_il = AS_InstrList(NULL,NULL), new_il_l = AS_InstrList(NULL,NULL);
+    for(AS_instrList ilp = il; ilp; ilp = ilp->tail){
+        AS_instr inst = ilp->head;
+        switch(inst->kind){
+            case I_LABEL: {
+                append_instrList(&new_il, &new_il_l, inst);
+                break;
+            }
+            case I_MOVE: {
+                //Not bothering to write code for coalesced nodes now.
+                Temp_tempList dst = inst->u.MOVE.dst;
+                Temp_tempList src = inst->u.MOVE.src;
+                string dst_name = Temp_look(initial, dst->head);
+                string src_name = Temp_look(initial, src->head);
+                if(strcmp(dst_name, src_name)!=0) append_instrList(&new_il, &new_il_l, inst);
+                break;
+            }
+            case I_OPER: {
+                append_instrList(&new_il, &new_il_l, inst);
+                break;
+            }
+        }
+    }
+    return new_il;
+}
 AS_instrList rewriteProgram(F_frame f, Temp_tempList spilled, AS_instrList il){
     printf("========Rewriting the program========\n");
     new_temps = NULL;
@@ -96,6 +122,7 @@ AS_instrList rewriteProgram(F_frame f, Temp_tempList spilled, AS_instrList il){
                 //Not bothering to write code for coalesced nodes now.
                 Temp_tempList dst = inst->u.MOVE.dst;
                 Temp_tempList src = inst->u.MOVE.src;
+              
                 int flag = 0;
                 for(Temp_tempList p = spilled; p; p = p->tail){
                     Temp_temp cur_spill = p->head;
@@ -231,7 +258,7 @@ struct RA_result RA_regAlloc(F_frame f, AS_instrList il) {
         //AS_printInstrList(stdout, il, Temp_layerMap(initial, Temp_name()));
     }
     ret.coloring = initial;
-    ret.il = il;
-    AS_printInstrList(stdout, il, Temp_layerMap(initial, Temp_name()));
+    ret.il = finalRewrite(il);
+    AS_printInstrList(stdout, ret.il, Temp_layerMap(initial, Temp_name()));
     return ret;
 }

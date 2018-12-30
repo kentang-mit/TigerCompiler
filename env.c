@@ -8,11 +8,11 @@
 //1. The binder of each table should be a E_envEntry type
 //2. return NULL is invalid. Should return Ty_nil.
 
-E_enventryList E_EnventryList(E_enventry e, E_enventryList next){
-    E_enventryList el = (E_enventryList)checked_malloc(sizeof(*el));
-    el->e = e;
-    el->next = next;
-    return el;
+E_escapeEntry E_EscapeEntry(int d, bool *escape){
+    E_escapeEntry entry = checked_malloc(sizeof(*entry));
+    entry->depth = d;
+    entry->escape = escape;
+    return entry;
 }
 
 E_enventry E_VarEntry(Tr_access access, Ty_ty ty)

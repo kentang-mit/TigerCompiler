@@ -472,7 +472,7 @@ Tr_exp Tr_ifExp(Tr_exp if_exp, Tr_exp then_exp, Tr_exp else_exp){
 		T_exp then_ex = unEx(then_exp);
 		T_exp else_ex = unEx(else_exp);
 		//put the return value of else exp in a register.
-		T_exp ret = T_Eseq(T_Move(T_Temp(r),T_Const(0)), 
+		T_exp ret = 
 					T_Eseq(if_cx.stm,
 					T_Eseq(T_Label(t),
 					T_Eseq(T_Move(T_Temp(r),then_ex),
@@ -480,7 +480,7 @@ Tr_exp Tr_ifExp(Tr_exp if_exp, Tr_exp then_exp, Tr_exp else_exp){
 					T_Eseq(T_Label(f),
 					T_Eseq(T_Move(T_Temp(r),else_ex),
 					T_Eseq(T_Label(done), T_Temp(r))
-					)))))));
+					))))));
         //pr_stm(stdout, if_cx.stm, 0);
         //assert(0);
 		return Tr_Ex(ret);
@@ -537,9 +537,10 @@ void Tr_procEntryExit(Tr_level level, Tr_exp body, Tr_accessList formals){
          
     }
     
-	T_stm body_stm = F_procEntryExit1(level->frame, T_Move(T_Temp(F_RV()), unEx(body)));
-	if(move_stm) glbl = F_FragList(F_ProcFrag(T_Seq(move_stm, body_stm), level->frame), glbl);
-    else glbl = F_FragList(F_ProcFrag(body_stm, level->frame), glbl);
+	T_stm body_stm;
+    if(move_stm) body_stm = F_procEntryExit1(level->frame, T_Move(T_Temp(F_RV()), T_Eseq(move_stm, unEx(body))));
+    else body_stm = F_procEntryExit1(level->frame, T_Move(T_Temp(F_RV()), unEx(body)));
+	glbl = F_FragList(F_ProcFrag(body_stm, level->frame), glbl);
 }
 
 F_fragList Tr_getResult(){

@@ -273,6 +273,14 @@ static void munchStm(T_stm s){
 }
 //Lab 6: put your code here
 AS_instrList F_codegen(F_frame f, T_stmList stmList) {
+    
+    Temp_tempList l = L(F_RDI(), L(F_RSI(), L(F_RDX(), L(F_RCX(), L(F_R8(), L(F_R9(), NULL))))));
+    F_accessList p = f->accessList;
+    for(int i = 0; i < 6 && p; i++, p = p->tail){
+        if(p->head->kind == inReg) emit(AS_Oper(String(""), NULL, L(p->head->u.reg, l->tail), NULL));
+        l = l->tail;
+    }
+    
 	T_stmList sl;
 	AS_instrList il;
 	for(sl = stmList; sl; sl = sl->tail) munchStm(sl->head);

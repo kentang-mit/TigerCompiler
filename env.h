@@ -25,9 +25,19 @@ struct E_enventryList_{
     E_enventryList next;
 };
 
+
+typedef struct E_escapeEntry_ *E_escapeEntry;
+struct E_escapeEntry_ {
+	int depth;
+    bool *escape;
+};
+
+
+
 E_enventry E_VarEntry(Tr_access access, Ty_ty ty);
 E_enventry E_ROVarEntry(Tr_access access, Ty_ty ty);
 E_enventry E_FunEntry(Tr_level level, Temp_label label, Ty_tyList formals, Ty_ty result);
+E_escapeEntry E_EscapeEntry(int d, bool *escape);
 
 S_table E_base_tenv(void);
 S_table E_base_venv(void);
