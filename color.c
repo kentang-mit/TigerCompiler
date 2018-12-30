@@ -133,7 +133,7 @@ void COL_removeFromList(COL_nodeList *first, COL_nodeList *last, COL_nodeList n)
         COL_nodeList p = *first;
     	if((*first)->next) (*first)->next->prev = NULL;
         *first = (*first)->next;
-        free(p);
+        //free(p);
     }
     else if(n==*last){
         (*last)->prev->next = (*last)->next;
@@ -143,7 +143,7 @@ void COL_removeFromList(COL_nodeList *first, COL_nodeList *last, COL_nodeList n)
         if(n->next) n->next->prev = n->prev;
         
         n->prev->next = n->next;
-        free(n);
+        //free(n);
     }
 }
 
@@ -239,7 +239,7 @@ void COL_removeFromMoveList(COL_moveList *first, COL_moveList *last, COL_moveLis
         COL_moveList p = *first;
         (*first)->next->prev = NULL;
         *first = (*first)->next;
-        free(p);
+        //free(p);
     }
     else if(n==*last){
         (*last)->prev->next = (*last)->next;
@@ -248,7 +248,7 @@ void COL_removeFromMoveList(COL_moveList *first, COL_moveList *last, COL_moveLis
     else{
         if(n->next) n->next->prev = n->prev;
         n->prev->next = n->next;
-        free(n);
+        //free(n);
     }
 }
 

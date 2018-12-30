@@ -22,23 +22,26 @@ int *allocRecord(int size)
 struct string {int length; unsigned char chars[1];};
 
 int stringEqual(struct string *s, struct string *t)
-{int i;
- if (s==t) return 1;
- if (s->length!=t->length) return 0;
- for(i=0;i<s->length;i++) if (s->chars[i]!=t->chars[i]) return 0;
- return 1;
+{int i, flag = 1;
+ //printf("%d %d\n", s->length, t->length);
+ //for(int i = 0; i < s->length; i++) printf("s[%d]: %c\n", i, s->chars[i]);
+ if (s==t) flag= 1;
+ if (s->length!=t->length) flag= 0;
+ for(i=0;i<s->length;i++) if (s->chars[i]!=t->chars[i]) flag= 0;
+ //printf("equ: %d\n", flag);
+ return flag;
 }
 
-/*
+
 void print(struct string *s)
 {int i; unsigned char *p=s->chars;
  for(i=0;i<s->length;i++,p++) putchar(*p);
 }
-*/
+/*
 void print(char *s){
     printf("%s", s);
 }
-
+*/
 void printi(int k)
 {
 	printf("%d", k);
@@ -116,6 +119,7 @@ int not(int i)
 
 struct string *__wrap_getchar()
 {int i=getc(stdin);
+ //printf("Got: %c\n", i);
  if (i==EOF) return &empty;
  else return consts+i;
 }

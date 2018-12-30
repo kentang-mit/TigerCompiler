@@ -127,14 +127,15 @@ void doStr(FILE *out, Temp_label label, string str) {
 	int length = *(int *)str;
 	length = length + 4;
 	//it may contains zeros in the middle of string. To keep this work, we need to print all the charactors instead of using fprintf(str)
-	fprintf(out, ".string \"");
+	fprintf(out, ".int %d\n",length-4);
+    fprintf(out, ".string \"");
 	int i = 4;
 	for (; i < length; i++) {
-		fprintf(out, "%c", str[i]);
+		fprintf(out, "\\x%02X", str[i]);
 	}
 	fprintf(out, "\"\n");
 
-	//fprintf(out, ".string \"%s\"\n", str);
+	printf("\n", str);
 }
 
 int main(int argc, string *argv)

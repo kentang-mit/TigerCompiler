@@ -178,6 +178,7 @@ static Temp_temp munchExp(T_exp e){
             //20181226 It is also possible that this is from a string!
             Temp_temp r = Temp_newtemp();
             sprintf(buffer, "leaq .%s(\%rip), `d0", Temp_labelstring(e->u.NAME));
+            //sprintf(buffer, "movq .%s, `d0", Temp_labelstring(e->u.NAME));
 			string as = String(buffer);
 			emit(AS_Oper(as, L(r, NULL), NULL, NULL));
             return r;

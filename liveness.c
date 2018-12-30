@@ -58,6 +58,7 @@ static Temp_tempList copy_tempList(Temp_tempList given){
 
 static int compare_tempList(Temp_tempList t1, Temp_tempList t2){
     Temp_tempList p1 = t1, p2 = t2;
+    if((t1==NULL && t2!=NULL) || (t2==NULL && t1!=NULL)) return 0;
     int p1len = 0;
     Temp_map m = Temp_empty();
     for(; p1; p1 = p1->tail, p1len++){
@@ -97,6 +98,8 @@ static Temp_tempList diff_tempList(Temp_tempList t1, Temp_tempList t2){
 }
 
 static Temp_tempList union_tempList(Temp_tempList t1, Temp_tempList t2){
+    if(t1==NULL) return t2;
+    if(t2==NULL) return t1;
     Temp_tempList p1, p2;
     Temp_tempList first = NULL, last = NULL;
     //use hash map to accelerate
@@ -148,6 +151,7 @@ static Temp_tempList intersect_tempList(Temp_tempList t1, Temp_tempList t2){
 static Temp_tempList Live_succ_union(G_node n){
     //out[n] = U{s in succ[n]} in[s]
     G_nodeList n_succ = G_succ(n);
+    if(!n_succ) return NULL;
     Temp_tempList rev_list = NULL;
     //use hash map to accelerate
     Temp_map m = Temp_empty();

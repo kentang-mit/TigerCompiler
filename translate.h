@@ -8,7 +8,16 @@
 #include "tree.h"
 
 /* Lab5: your code below */
+//the Tr_level parent is used to maintain the static link?
+struct Tr_level_;
 typedef struct Tr_level_ *Tr_level;
+struct Tr_level_ {
+	F_frame frame;
+	Tr_level parent;
+};
+
+
+struct Tr_exp_;
 
 typedef struct Tr_exp_ *Tr_exp;
 
@@ -72,6 +81,7 @@ Tr_exp Tr_opExp(A_oper op, Tr_exp left, Tr_exp right);
 Tr_exp Tr_cmpExp(A_oper op, Tr_exp left, Tr_exp right);
 Tr_exp Tr_stringExp(string s);
 Tr_exp Tr_recordExp(int cnt, Tr_expList expList, Tr_level l);
+Tr_exp Tr_stringEq(Tr_exp s1, Tr_exp s2);
 Tr_exp Tr_arrayExp(Tr_exp cnt, Tr_exp value);
 Tr_exp Tr_whileExp(Tr_exp cond_exp, Tr_exp body_exp, Temp_label bTarget);
 Tr_exp Tr_forExp(Tr_exp id_exp, Tr_exp lo, Tr_exp hi, Tr_exp body_exp, Temp_label bTarget);

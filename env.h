@@ -19,6 +19,12 @@ struct E_enventry_ {
 	} u;
 };
 
+typedef struct E_enventryList_ *E_enventryList;
+struct E_enventryList_{
+    E_enventry e;
+    E_enventryList next;
+};
+
 E_enventry E_VarEntry(Tr_access access, Ty_ty ty);
 E_enventry E_ROVarEntry(Tr_access access, Ty_ty ty);
 E_enventry E_FunEntry(Tr_level level, Temp_label label, Ty_tyList formals, Ty_ty result);

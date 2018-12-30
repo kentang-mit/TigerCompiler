@@ -19,14 +19,6 @@ struct Tr_exp_ {
 };
 
 
-
-//the Tr_level parent is used to maintain the static link?
-struct Tr_level_ {
-	F_frame frame;
-	Tr_level parent;
-};
-
-
 //The global fragment list
 F_fragList glbl = NULL;
 
@@ -220,6 +212,7 @@ Tr_exp Tr_staticLink(Tr_level used, Tr_level declared){
 		fp = F_exp(fpa->access, fp);
 	}
 	//return the frame pointer of the level one variable/func is in.
+    //pr_tree_exp(stdout, fp, 0); printf("\n\n\n");
 	return Tr_Ex(fp);
 }
 
@@ -293,13 +286,19 @@ Tr_exp Tr_cmpExp(A_oper op, Tr_exp left, Tr_exp right){
 //are the content.
 Tr_exp Tr_stringExp(string s){
     int length = strlen(s);
-    string new_s = (string)checked_malloc(sizeof(*s)+sizeof(int));
+    //Here should not be sizeof(*s) + sizeof(int) + 1. Should be length!
+    string new_s = (string)checked_malloc(length+sizeof(int)+1);
     *new_s = length;
     for(int i = 0; i < strlen(s); i++) new_s[i+4] = s[i];
-    new_s[strlen(s)+1] = '\0';
+    //fix a bug, should consider int. It takes up 4 bytes.
+    new_s[strlen(s)+4] = '\0';
 	Temp_label lab = Temp_newlabel(); //use newlabel is better. The string can be empty!
 	glbl = F_FragList(F_StringFrag(lab, new_s), glbl);
 	return Tr_Ex(T_Name(lab));
+}
+
+Tr_exp Tr_stringEq(Tr_exp s1, Tr_exp s2){
+    return Tr_Ex(F_externalCall(String("stringEqual"), T_ExpList(unEx(s1), T_ExpList(unEx(s2), NULL))));
 }
 
 //creation of a record TBD: initialization? return a ptr?
@@ -377,13 +376,15 @@ Tr_exp Tr_breakExp(Temp_label bTarget){
 //update on 20181228: If call level < declared level, static link = rbp. Else, static link = (%rbp)(should access one layer upper).
 Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level, Tr_expList args){
 	T_expList rev_lis = NULL;
-    //printf("%d %d\n", cur_level, fun_level);
-	//T_exp sl = Tr_staticLink(cur_level, fun_level)->u.ex;
-	Temp_temp fp = F_FP();
+	//T_exp sl = Tr_staticLink(cur_level, fun_level)->u.ex;    
+    Temp_temp fp = F_FP();
     int flag = 0;
     Tr_level p;
     for(p = fun_level; p&&p != cur_level; p = p->parent);
-    if(p==cur_level && fun_level != cur_level) flag = 1;
+    if(p==cur_level && fun_level->parent != cur_level->parent) flag = 1;
+    
+    
+    //failed parameter passing
     /*
 	Tr_accessList accs = Tr_formals(cur_level);
 	for(Tr_accessList acc = accs; acc; acc = acc->tail){
@@ -399,7 +400,12 @@ Tr_exp Tr_callExp(Temp_label fun_label, Tr_level fun_level, Tr_level cur_level, 
 		lis = T_ExpList(expl->head, lis);
 	}
     
-    if(strcmp((char*)Temp_labelstring(fun_label), "printi")!=0 && strcmp((char*)Temp_labelstring(fun_label), "print")!=0){
+    if(strcmp((char*)Temp_labelstring(fun_label), "printi")!=0 && strcmp((char*)Temp_labelstring(fun_label), "print")!=0
+      && strcmp((char*)Temp_labelstring(fun_label), "flush")!=0 && strcmp((char*)Temp_labelstring(fun_label), "ord")!=0
+      && strcmp((char*)Temp_labelstring(fun_label), "chr")!=0 && strcmp((char*)Temp_labelstring(fun_label), "size")!=0 
+      && strcmp((char*)Temp_labelstring(fun_label), "substring")!=0 && strcmp((char*)Temp_labelstring(fun_label), "concat")!=0
+      && strcmp((char*)Temp_labelstring(fun_label), "getchar")!=0){
+        //failed static link
         if(flag) lis = T_ExpList(T_Temp(fp), lis);
         else lis = T_ExpList(T_Mem(T_Binop(T_plus, T_Temp(fp), T_Const(-8))), lis);
     }
@@ -505,7 +511,8 @@ void Tr_procEntryExit(Tr_level level, Tr_exp body, Tr_accessList formals){
     int cnt = 0;
     //move all the formals to correct positions
     
-    for(Tr_accessList p = Tr_formals(level); p; p = p->tail, cnt++){
+    for(Tr_accessList p = formals; p; p = p->tail, cnt++){
+        //printf("%d\n", cnt);
         Temp_temp reg;
          if(cnt<=5){
              if(cnt == 0) reg = F_RDI();

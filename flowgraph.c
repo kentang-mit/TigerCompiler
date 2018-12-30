@@ -112,9 +112,9 @@ G_graph FG_AssemFlowGraph(AS_instrList il) {
         }
     }
     
-    printf("Showing the control flow graph...\n");
-    G_show(stdout, first_l, NULL);
-    printf("End showing the control flow graph...\n");
+    //printf("Showing the control flow graph...\n");
+    //G_show(stdout, first_l, NULL);
+    //printf("End showing the control flow graph...\n");
     
 	return G;
 }

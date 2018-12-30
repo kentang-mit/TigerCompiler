@@ -67,6 +67,7 @@ struct expty transVar(S_table venv, S_table tenv, A_var v, Tr_level l, Temp_labe
 		case A_simpleVar:{
 			E_enventry x = S_look(venv, get_simplevar_sym(v));
 			if(x && x->kind == E_varEntry){
+                //printf("%s %s: ", F_name(l->frame), S_name(get_simplevar_sym(v)));
 				return expTy(Tr_simpleVar(x->u.var.access, l), actual_ty(x->u.var.ty));
 			}
 			else{
@@ -146,13 +147,15 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a, Tr_level l, Temp_labe
 			if(oper == A_eqOp || oper == A_gtOp || oper == A_ltOp || oper == A_geOp || oper == A_leOp || oper == A_neqOp){
 				if((left.ty->kind == Ty_nil && right.ty->kind == Ty_record) || 
 					(right.ty->kind == Ty_nil && left.ty->kind == Ty_record)){
-					return expTy(Tr_nop(), Ty_Int());
+					return expTy(Tr_cmpExp(oper, left.exp, right.exp), Ty_Int());
 				}
 				if(left.ty->kind != right.ty->kind){
 					EM_error(get_opexp_left(a)->pos, "same type required");
 					return expTy(Tr_nop(), Ty_Int());
 				}
-				return expTy(Tr_cmpExp(oper, left.exp, right.exp), Ty_Int());
+                if(left.ty->kind != Ty_string) return expTy(Tr_cmpExp(oper, left.exp, right.exp), Ty_Int());
+                else return expTy(Tr_cmpExp(oper, Tr_stringEq(left.exp, right.exp), Tr_intExp(1)), Ty_Int());
+                
 			}
 		}
 		
@@ -271,7 +274,7 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a, Tr_level l, Temp_labe
             struct expty var = transVar(venv, tenv, get_assexp_var(a), l, label);
 			struct expty e = transExp(venv, tenv, get_assexp_exp(a), l, label);
 			if(var.ty->kind == Ty_record && e.ty->kind == Ty_nil){
-				return expTy(Tr_nop(), Ty_Nil());
+				return expTy(Tr_assignExp(var.exp, Tr_nop()), Ty_Nil());
 			}
 			else if(var.ty->kind != Ty_nil && e.ty->kind == Ty_nil){
 				EM_error(a->pos, "init should not be nil without type specified");
@@ -409,14 +412,14 @@ struct expty transExp(S_table venv, S_table tenv, A_exp a, Tr_level l, Temp_labe
 			S_beginScope(venv);
 			S_beginScope(tenv);
 			for(d = get_letexp_decs(a); d; d = d->tail){
-				Tr_exp e = transDec(venv, tenv, d->head, l, label);
+				Tr_exp e = transDec(venv, tenv, d->head, l, label);                
                 el = Tr_ExpList(e, el);
 			}
 			exp = transExp(venv, tenv, get_letexp_body(a), l, label);
             el = Tr_ExpList(exp.exp, el);
-			S_endScope(venv);
-			S_endScope(tenv);
 			exp.exp = Tr_seqExp(el);
+            S_endScope(venv);
+			S_endScope(tenv);
 			return exp;
 		}
 		
@@ -612,6 +615,7 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 		}
 		case A_functionDec:{
 			//TBD: recursive modification(this implementation is ugly!) TBD: lifecycle problem(introduced in lab5)
+            //20181230: First enter the names of the functions. Then beginScope (local vars will not live long). Finally endScope.
 			A_fundecList fl = get_funcdec_list(d);
 			S_table tmp_venv = venv, temp_venv = E_base_venv();
 			S_table tmp_tenv = tenv;//E_base_tenv();
@@ -619,6 +623,7 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
             Temp_label newLabel;
             Tr_level newLevel;
             
+            //S_beginScope(tmp_venv);
 			for(; fl; fl = fl->tail){
 				A_fundec f = fl->head;
 				Ty_ty resultTy;
@@ -643,16 +648,8 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
                 boolList = U_BoolList(1, boolList);
 				newLevel =  Tr_newLevel(l, newLabel, boolList);
                 //Original implementation is wrong. Still need to allocLocal! access the position in F_frame, not rdi, rsi, ...
-                int cnt = 0;
                 U_boolList b;
-                //Please notice that formalTys is reversed
-                Tr_accessList accl_ = Tr_formals(newLevel)->tail;
-                Tr_accessList accl = NULL;
-                for(Tr_accessList p=accl_;p;p=p->tail) accl = Tr_AccessList(p->head, accl);
-                for(t = formalTys, ls = ls_backup; ls; ls = ls->tail, accl = accl->tail, t = t->tail, cnt++){ 
-                   S_enter(venv, ls->head->name, E_VarEntry(accl->head, t->head));
-                    
-				}
+                
 				ent = S_look(temp_venv, f->name);
 				if(!ent){
 					S_enter(venv, f->name, E_FunEntry(newLevel, newLabel, formalTys, resultTy));
@@ -664,8 +661,10 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 			}
 
 			fl = get_funcdec_list(d);
+            S_beginScope(tmp_venv);
 			for(; fl; fl = fl->tail){
 				A_fundec f = fl->head;
+                //printf("%s:\n", S_name(f->name));
 				E_enventry ent = S_look(venv, f->name), ent1;
 				if(!ent){
 					EM_error(d->pos, "undefined function %s", S_name(f->name));
@@ -682,18 +681,34 @@ Tr_exp transDec(S_table venv, S_table tenv, A_dec d, Tr_level l, Temp_label labe
 
 				Ty_tyList formalTys = ent->u.fun.formals;
 				
+                Tr_level newLevel = ent->u.fun.level;
+                A_fieldList l_, ls=NULL, ls_backup; Ty_tyList t; //reversed....
+				for(l_ = f->params; l_; l_ = l_->tail) ls = A_FieldList(l_->head, ls);
+                ls_backup = ls;
+                //Please notice that formalTys is reversed
+                Tr_accessList accl_ = Tr_formals(newLevel);
+                Tr_accessList accl = NULL;
+                for(Tr_accessList p=accl_->tail;p;p=p->tail) accl = Tr_AccessList(p->head, accl);
+                for(t = formalTys, ls = ls_backup; ls; ls = ls->tail, accl = accl->tail, t = t->tail){ 
+                   S_enter(venv, ls->head->name, E_VarEntry(accl->head, t->head));
+                    
+				}
+                
 				//S_beginScope(tmp_venv);
 				struct expty ret_val = transExp(tmp_venv, tenv, f->body, ent->u.fun.level, ent->u.fun.label);
-                Tr_procEntryExit(ent->u.fun.level, ret_val.exp, Tr_formals(ent->u.fun.level)); //fix a bug. originally using newLevel, but its (relatively) global.
+                //20181230 fix another bug. Here the last param should be accl_, instead of the Tr_formals. Because local vars have entered.
+                Tr_procEntryExit(ent->u.fun.level, ret_val.exp, accl_); //fix a bug. originally using newLevel, but its (relatively) global.
                 
 				if(ret_val.ty->kind != resultTy->kind){
 					if(ret_val.ty->kind != Ty_nil && resultTy->kind == Ty_nil) EM_error(f->pos, "procedure returns value");
 					//TBD: return type mismatch is a problem!
 					//else EM_error(f->pos, "return type mismatch");
 				}
-				//S_endScope(tmp_venv);
+				
 			}
-			
+			S_endScope(tmp_venv);
+            //restore function decs to venv;
+            
 			return Tr_nop();
 		}
 	}
@@ -768,7 +783,7 @@ F_fragList SEM_transProg(A_exp exp){
 	S_table venv = E_base_venv();
 	S_table tenv = E_base_tenv();
 	struct expty final = transExp(venv, tenv, exp, OUTMOST, label);
-    Tr_procEntryExit(OUTMOST, final.exp, Tr_formals(OUTMOST));
+    Tr_procEntryExit(OUTMOST, final.exp, NULL);
 	return Tr_getResult();
 }
 
