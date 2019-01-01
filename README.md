@@ -20,3 +20,6 @@ Dec 27, 2018
 Dec 30, 2018
 
 Passed all test cases, to implement the escape analysis.
+
+Jan 1, 2018
+======END COMPILER 2018======
