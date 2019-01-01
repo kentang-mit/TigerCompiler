@@ -307,17 +307,21 @@ AS_proc F_procEntryExit3(F_frame frame, AS_instrList body){
     sprintf(buffer, "subq $%d, `s0", fsize);
     AS_instr pro3 = AS_Oper(String(buffer), L(F_SP(), NULL), L(F_SP(), NULL), NULL);
     
-    AS_instr epi1 = AS_Oper(String("leaveq"), L(F_SP(), NULL), L(F_FP(), NULL), NULL);
-    AS_instr epi2 = AS_Oper(String("ret"), NULL, NULL, NULL);
+    //sprintf(buffer, "addq $%d, `s0", fsize);
+    //AS_instr epi1 = AS_Oper(String(buffer), L(F_SP(), NULL), L(F_SP(), NULL), NULL);
+    //AS_instr epi2 = AS_Oper(String("ret"), NULL, NULL, NULL);
     
-    AS_instrList prologue =  AS_InstrList(pro1, AS_InstrList(pro2, AS_InstrList(pro3, NULL)));
-    AS_instrList epilogue = AS_InstrList(epi1, AS_InstrList(epi2, NULL));
+    //AS_instrList prologue =  AS_InstrList(pro1, AS_InstrList(pro2, AS_InstrList(pro3, NULL)));
+    AS_instrList prologue =  AS_InstrList(pro3, NULL);
+    
+    //AS_instrList epilogue = AS_InstrList(epi1, NULL);
     AS_instrList final = F_procEntryExit2(AS_splice(prologue, body));
     
     string procName = F_name(frame);
     sprintf(prolog, ".text\n.globl %s\n.type %s, @function\n%s:\n", procName, procName, procName);
-    sprintf(epilog, "leaveq\nret\n");
+    //sprintf(epilog, "ret\n");
     
+    sprintf(epilog, "leaveq\nret\n");
     
     AS_proc proc = AS_Proc(String(prolog), final, String(epilog));
     return proc;

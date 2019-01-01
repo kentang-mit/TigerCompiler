@@ -66,7 +66,7 @@ static void doProc(FILE *out, F_frame frame, T_stm body)
  //printStmList(stdout, stmList);
  //printf("-------====trace=====-----\n");
  iList  = F_codegen(frame, stmList); /* 9 */
- proc = F_procEntryExit3(frame, iList);
+ //proc = F_procEntryExit3(frame, iList);
  AS_printInstrList(stdout, iList, Temp_layerMap(F_tempMap, Temp_name()));
  
   /*
@@ -89,11 +89,14 @@ static void doProc(FILE *out, F_frame frame, T_stm body)
  fprintf(out, "%s:\n", procName);
  */
  proc->body = ra.il;
- char size_buf[50];
+ char size_buf[50], epilog[100];
  sprintf(size_buf, "subq $%d, `s0", frame->size);
- proc->body->tail->tail->head->u.OPER.assem = String(size_buf);
+ //proc->body->tail->tail->head->u.OPER.assem = String(size_buf);
+ proc->body->head->u.OPER.assem = String(size_buf);
  fprintf(out, "%s", proc->prolog);
  AS_printInstrList(out, ra.il, Temp_layerMap(ra.coloring, Temp_name()));
+ sprintf(epilog, "addq $%d, \%rsp\nret\n", frame->size);
+ proc->epilog = String(epilog);
  fprintf(out, "%s", proc->epilog);
     //fprintf(out, "END %s\n\n", F_name(frame));
 

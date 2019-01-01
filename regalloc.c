@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include "ctype.h"
+#include "string.h"
 #include "util.h"
 #include "symbol.h"
 #include "temp.h"
@@ -65,7 +67,51 @@ static void Temp_changeTempList(Temp_tempList l, Temp_temp to_replace, Temp_temp
     }
 }
 
-AS_instrList finalRewrite(AS_instrList il){
+static AS_instr rewriteInstr(F_frame f, AS_instr inst){
+    char *assem = (char*)(inst->u.OPER.assem);
+    //only handle move
+    if(assem[0]!='m') return inst;
+    int num_blank, i, offset = 0;
+    if(inst->u.OPER.src->head==F_FP()){
+        inst->u.OPER.src->head = F_SP();
+        num_blank = 1;
+    }
+    else{
+        if(inst->u.OPER.src->tail->head != F_FP()) return inst;
+        inst->u.OPER.src->tail->head = F_SP();
+        num_blank = 2;
+    }
+    for(i = 0; i < strlen(assem); i++){
+        if(assem[i] == ' ') num_blank --;
+        if(!num_blank){
+            break;
+        }
+    }
+    assert(num_blank==0);
+    i += 2;
+    for(; i < strlen(assem); i++){
+        if(!isdigit(assem[i])) break;
+        offset *= 10;
+        offset += assem[i] - '0';
+    }
+    offset = f->size - offset;
+    if(inst->u.OPER.src->head == F_SP()){
+        char buffer[50];
+        sprintf(buffer, "movq %d(`s0), `d0", offset);
+        inst = AS_Oper(String(buffer), inst->u.OPER.dst, inst->u.OPER.src, NULL);
+        return inst;
+    }
+    else{
+        char buffer[50];
+        sprintf(buffer, "movq `s0, %d(`s1)", offset);
+        inst = AS_Oper(String(buffer), inst->u.OPER.dst, inst->u.OPER.src, NULL);
+        return inst;
+    }
+    assert(0);
+}
+
+
+AS_instrList finalRewrite(F_frame f, AS_instrList il){
     AS_instrList new_il = AS_InstrList(NULL,NULL), new_il_l = AS_InstrList(NULL,NULL);
     for(AS_instrList ilp = il; ilp; ilp = ilp->tail){
         AS_instr inst = ilp->head;
@@ -80,11 +126,25 @@ AS_instrList finalRewrite(AS_instrList il){
                 Temp_tempList src = inst->u.MOVE.src;
                 string dst_name = Temp_look(initial, dst->head);
                 string src_name = Temp_look(initial, src->head);
-                if(strcmp(dst_name, src_name)!=0) append_instrList(&new_il, &new_il_l, inst);
+                if(strcmp(dst_name, src_name)!=0){
+                    if(src->head==F_FP()){
+                        inst->u.MOVE.src->head = F_SP();
+                        append_instrList(&new_il, &new_il_l, inst);
+                        char buffer[50];
+                        sprintf(buffer, "addq $%d, `d0", f->size);
+                        AS_instr new_inst = AS_Oper(String(buffer), inst->u.MOVE.dst, inst->u.MOVE.src, NULL);
+                        append_instrList(&new_il, &new_il_l, new_inst);
+                    }
+                    else append_instrList(&new_il, &new_il_l, inst);
+                }
                 break;
             }
             case I_OPER: {
+                if(Temp_inTempList(F_FP(), inst->u.OPER.src)){
+                    inst = rewriteInstr(f, inst);
+                }
                 append_instrList(&new_il, &new_il_l, inst);
+                
                 break;
             }
         }
@@ -103,8 +163,8 @@ AS_instrList rewriteProgram(F_frame f, Temp_tempList spilled, AS_instrList il){
         F_access acc = F_allocLocal(f, 1);
         int offset = acc->u.offset;
         char buffer[50];
-        //`r0 is %rbp.
-        sprintf(buffer, "%d(`s0)", offset);
+        //`s0 is %rbp.
+        sprintf(buffer, "%d", offset);
         string mem_dst = String(buffer);
         Temp_enter(mem_access, t, mem_dst);
         Temp_regEnter(reg_map, t, t1);
@@ -133,9 +193,9 @@ AS_instrList rewriteProgram(F_frame f, Temp_tempList spilled, AS_instrList il){
                     Temp_tempList insrc = Temp_inTempList(cur_spill, src);
                     if(indst!=NULL){    
                         char buffer[50];
-                        sprintf(buffer, "movq `s1, %s", (char*)acc);
+                        sprintf(buffer, "movq `s0, %s(`s1)", (char*)acc);
                         Temp_tempList d = NULL;
-                        Temp_tempList s = L(F_FP(), L(replacement, NULL));
+                        Temp_tempList s = L(replacement, L(F_FP(), NULL));
                         AS_instr save_inst = AS_Oper(String(buffer), d, s, NULL);
                         
                         Temp_changeTempList(inst->u.MOVE.dst, cur_spill, replacement);
@@ -145,7 +205,7 @@ AS_instrList rewriteProgram(F_frame f, Temp_tempList spilled, AS_instrList il){
                     }
                     else if(insrc!=NULL){
                         char buffer[50];
-                        sprintf(buffer, "movq %s, `d0", (char*)acc);
+                        sprintf(buffer, "movq %s(`s0), `d0", (char*)acc);
                         Temp_tempList d = L(replacement, NULL);
                         Temp_tempList s = L(F_FP(), NULL);
                         AS_instr fetch_inst = AS_Oper(String(buffer), d, s, NULL);
@@ -175,10 +235,10 @@ AS_instrList rewriteProgram(F_frame f, Temp_tempList spilled, AS_instrList il){
                     Temp_temp replacement = Temp_regLook(reg_map, cur_spill);
                     if(Temp_inTempList(cur_spill, dst)){    
                         char buffer[50];
-                        sprintf(buffer, "movq `s1, %s", (char*)acc);
+                        sprintf(buffer, "movq `s0, %s(`s1)", (char*)acc);
                         //printf("%s\n", buffer);
                         Temp_tempList d = NULL;
-                        Temp_tempList s = L(F_FP(), L(replacement, NULL));
+                        Temp_tempList s = L(replacement, L(F_FP(), NULL));
                         AS_instr save_inst = AS_Oper(String(buffer), d, s, NULL);
                         Temp_changeTempList(inst->u.OPER.dst, cur_spill, replacement);
                         append_instrList(&new_il, &new_il_l, inst);
@@ -187,7 +247,7 @@ AS_instrList rewriteProgram(F_frame f, Temp_tempList spilled, AS_instrList il){
                     }
                     else if(Temp_inTempList(cur_spill, src)){
                         char buffer[50];
-                        sprintf(buffer, "movq %s, `d0", (char*)acc);
+                        sprintf(buffer, "movq %s(`s0), `d0", (char*)acc);
                         Temp_tempList d = L(replacement, NULL);
                         Temp_tempList s = L(F_FP(), NULL);
                         AS_instr fetch_inst = AS_Oper(String(buffer), d, s, NULL);
@@ -258,7 +318,7 @@ struct RA_result RA_regAlloc(F_frame f, AS_instrList il) {
         //AS_printInstrList(stdout, il, Temp_layerMap(initial, Temp_name()));
     }
     ret.coloring = initial;
-    ret.il = finalRewrite(il);
+    ret.il = finalRewrite(f, il);
     AS_printInstrList(stdout, ret.il, Temp_layerMap(initial, Temp_name()));
     return ret;
 }
